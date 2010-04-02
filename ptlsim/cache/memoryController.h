@@ -32,6 +32,12 @@
 #include <interconnect.h>
 #include <superstl.h>
 
+#ifdef DRAMSIM
+#include <DRAMSim.h>
+#endif
+
+using DRAMSim::MemorySystem;
+
 namespace Memory {
 
 struct MemoryQueueEntry : public FixStateListObject
@@ -75,6 +81,11 @@ class MemoryController : public Controller
 		int get_bank_id(W64 addr);
 
 	public:
+#ifdef DRAMSIM
+		void read_return_cb(uint, uint64_t, uint64_t);
+		void write_return_cb(uint, uint64_t, uint64_t);
+		MemorySystem *mem;
+#endif
 		MemoryController(W8 coreid, char *name,
 				 MemoryHierarchy *memoryHierarchy);
 		bool handle_request_cb(void *arg);
@@ -92,8 +103,11 @@ class MemoryController : public Controller
 
 		int get_no_pending_request(W8 coreid);
 
-		bool is_full(bool fromInterconnect = false) const {
-			return pendingRequests_.isFull();
+		bool is_full(bool fromInterconnect = false, MemoryRequest *request = NULL) const {
+			bool phxWillFail = false; 
+			if (request != NULL)
+				phxWillFail = !mem->WillAcceptTransaction();
+			return pendingRequests_.isFull() || phxWillFail;
 		}
 
 		void print_map(ostream& os)

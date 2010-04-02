@@ -359,7 +359,7 @@ namespace Memory {
 
                 void print(ostream& os) const;
 
-                bool is_full(bool fromInterconnect = false) const {
+                bool is_full(bool fromInterconnect = false, MemoryRequest *request = NULL) const {
                     if(fromInterconnect) {
                         // We keep some free entries for interconnect
                         // so if the queue is 100% full then only

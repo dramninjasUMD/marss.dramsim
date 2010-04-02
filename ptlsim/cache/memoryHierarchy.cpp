@@ -370,6 +370,9 @@ void MemoryHierarchy::clock()
 				cpuControllers_[i]);
 		cpuController->clock();
 	}
+#ifdef DRAMSIM
+	((MemoryController*)memoryController_)->mem->update();	
+#endif
 
 	Event *event;
 	while(!eventQueue_.empty()) {

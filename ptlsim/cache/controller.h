@@ -106,7 +106,7 @@ class Controller
 		virtual void print_map(ostream& os)=0;
 
 		virtual void print(ostream& os) const =0;
-		virtual bool is_full(bool fromInterconnect = false) const = 0;
+		virtual bool is_full(bool fromInterconnect = false, MemoryRequest *request = NULL) const = 0;
 		virtual void annul_request(MemoryRequest* request) = 0;
 
 		int flush() {

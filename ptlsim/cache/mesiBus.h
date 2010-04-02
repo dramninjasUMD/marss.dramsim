@@ -135,7 +135,7 @@ class BusInterconnect : public Interconnect
         BusStats *stats_;
 
 		BusQueueEntry *arbitrate_round_robin();
-		bool can_broadcast(BusControllerQueue *queue);
+		bool can_broadcast(BusControllerQueue *queue, MemoryRequest *request);
 
 	public:
 		BusInterconnect(char *name, MemoryHierarchy *memoryHierarchy);
