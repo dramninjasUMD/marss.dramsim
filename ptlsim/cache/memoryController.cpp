@@ -42,7 +42,7 @@ MemoryController::MemoryController(W8 coreid, char *name,
 	Controller(coreid, name, memoryHierarchy)
 {
 #ifdef DRAMSIM
-	mem = new MemorySystem(0, "ini/DDR3_micron_64M_8B_x4_sg15.ini", "system.ini", "../DRAMSim", "MARSS");
+	mem = new MemorySystem(0, "ini/DDR3_micron_64M_8B_x4_sg15.ini", "system.ini", "./DRAMSim", "MARSS");
 
 	typedef DRAMSim::Callback <MemoryController, void, uint, uint64_t, uint64_t> dramsim_callback_t;
 	DRAMSim::TransactionCompleteCB *read_cb = new dramsim_callback_t(this, &MemoryController::read_return_cb);

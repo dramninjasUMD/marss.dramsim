@@ -104,10 +104,10 @@ class MemoryController : public Controller
 		int get_no_pending_request(W8 coreid);
 
 		bool is_full(bool fromInterconnect = false, MemoryRequest *request = NULL) const {
-			bool phxWillFail = false; 
+			bool dramsimIsFull = false; 
 			if (request != NULL)
-				phxWillFail = !mem->WillAcceptTransaction();
-			return pendingRequests_.isFull() || phxWillFail;
+				dramsimIsFull = !mem->WillAcceptTransaction();
+			return pendingRequests_.isFull() || dramsimIsFull;
 		}
 
 		void print_map(ostream& os)

@@ -1,0 +1,33 @@
+﻿<Properties>
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" ctype="Workspace" />
+  <MonoDevelop.Ide.DebuggingService>
+    <BreakpointStore>
+      <Breakpoint file="/home/paul/DRAMSim/DRAMVis/DRAMVis/Visualizer.cs" line="876" />
+      <Breakpoint file="/home/paul/DRAMSim/DRAMVis/DRAMVis/Visualizer.cs" line="687" />
+      <Breakpoint file="/home/paul/DRAMSim/DRAMVis/DRAMVis/Visualizer.cs" line="669" />
+    </BreakpointStore>
+  </MonoDevelop.Ide.DebuggingService>
+  <MonoDevelop.Ide.Workbench ActiveDocument="DRAMVis/Visualizer.cs" ctype="Workbench">
+    <Files>
+      <File FileName="DRAMVis/Grapher.cs" Line="82" Column="6" />
+      <File FileName="DRAMVis/LineGrapher.cs" Line="133" Column="16" />
+      <File FileName="DRAMVis/MyLinePlot.cs" Line="9" Column="2" />
+      <File FileName="DRAMVis/VisFileContainer.cs" Line="53" Column="38" />
+      <File FileName="DRAMVis/Visualizer.cs" Line="669" Column="1" />
+      <File FileName="DRAMVis/VisFileReader.cs" Line="414" Column="19" />
+      <File FileName="DRAMVis/BarGrapher.cs" Line="108" Column="5" />
+    </Files>
+    <Pads>
+      <Pad Id="ProjectPad">
+        <State expanded="True">
+          <Node name="DRAMVis" expanded="True">
+            <Node name="Visualizer.cs" selected="True" />
+          </Node>
+        </State>
+      </Pad>
+      <Pad Id="ClassPad">
+        <State expanded="True" selected="True" />
+      </Pad>
+    </Pads>
+  </MonoDevelop.Ide.Workbench>
+</Properties>

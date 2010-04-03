@@ -1,0 +1,17 @@
+<Combine name="DRAMVis" fileversion="2.0">
+  <Policies />
+  <Configurations active="Debug">
+    <Configuration name="Debug" ctype="CombineConfiguration">
+      <Entry build="True" name="DRAMVis" configuration="Debug" />
+    </Configuration>
+    <Configuration name="Release" ctype="CombineConfiguration">
+      <Entry build="True" name="DRAMVis" configuration="Release" />
+    </Configuration>
+  </Configurations>
+  <StartMode startupentry="DRAMVis" single="True">
+    <Execute type="None" entry="DRAMVis" />
+  </StartMode>
+  <Entries>
+    <Entry filename="DRAMVis/DRAMVis.mdp" />
+  </Entries>
+</Combine>

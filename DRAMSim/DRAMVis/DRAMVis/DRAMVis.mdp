@@ -1,0 +1,39 @@
+<Project name="DRAMVis" fileversion="2.0" language="C#" clr-version="Net_2_0" targetFramework="3.5" ctype="DotNetProject">
+  <Configurations active="Debug">
+    <Configuration name="Debug" ctype="DotNetProjectConfiguration">
+      <Output directory="bin/Debug" assembly="DRAMVis" />
+      <Build debugmode="True" target="Exe" />
+      <Execution runwithwarnings="True" consolepause="True" runtime="MsNet" clr-version="Net_2_0" />
+      <EnvironmentVariables />
+      <CodeGeneration compiler="Mcs" warninglevel="4" optimize="True" unsafecodeallowed="False" generateoverflowchecks="True" definesymbols="DEBUG" generatexmldocumentation="False" ctype="CSharpCompilerParameters" />
+    </Configuration>
+    <Configuration name="Release" ctype="DotNetProjectConfiguration">
+      <Output directory="bin/Release" assembly="DRAMVis" />
+      <Build debugmode="False" target="Exe" />
+      <Execution runwithwarnings="True" consolepause="True" runtime="MsNet" clr-version="Net_2_0" />
+      <EnvironmentVariables />
+      <CodeGeneration compiler="Mcs" warninglevel="4" optimize="True" unsafecodeallowed="False" generateoverflowchecks="True" generatexmldocumentation="False" ctype="CSharpCompilerParameters" />
+    </Configuration>
+  </Configurations>
+  <Contents>
+    <File name="Visualizer.cs" subtype="Code" buildaction="Compile" />
+    <File name="VisFileReader.cs" subtype="Code" buildaction="Compile" />
+    <File name="Grapher.cs" subtype="Code" buildaction="Compile" />
+    <File name="SystemParameters.cs" subtype="Code" buildaction="Compile" />
+    <File name="DeviceParameters.cs" subtype="Code" buildaction="Compile" />
+    <File name="VisFileContainer.cs" subtype="Code" buildaction="Compile" />
+    <File name="LineGrapher.cs" subtype="Code" buildaction="Compile" />
+    <File name="MyLinePlot.cs" subtype="Code" buildaction="Compile" />
+    <File name="BarGrapher.cs" subtype="Code" buildaction="Compile" />
+    <File name="IPlottable.cs" subtype="Code" buildaction="Compile" />
+    <File name="DictionaryExtensions.cs" subtype="Code" buildaction="Compile" />
+  </Contents>
+  <References>
+    <ProjectReference type="Gac" localcopy="True" refto="System, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+    <ProjectReference type="Gac" localcopy="True" refto="System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
+    <ProjectReference type="Gac" localcopy="True" refto="System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+    <ProjectReference type="Assembly" localcopy="True" refto="bin/Debug/NPlot.dll" />
+    <ProjectReference type="Gac" localcopy="True" refto="System.Design, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
+    <ProjectReference type="Gac" localcopy="True" refto="System.Core, Version=3.5.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  </References>
+</Project>

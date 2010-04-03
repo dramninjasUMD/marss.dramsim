@@ -29,7 +29,7 @@ env['CPPPATH'].append("%s/%s" % (qemu_dir, "fpu"))
 env['CPPPATH'].append("%s/%s" % (qemu_dir, "x86_64-softmmu"))
 
 #dramsim 
-env['CPPPATH'].append(os.getcwd() + "/../../DRAMSim");
+env['CPPPATH'].append(os.getcwd() + "/../DRAMSim");
 env.Append(CCFLAGS = '-DDRAMSIM')
 
 optimization_defs = '-fno-trapping-math -fno-stack-protector -fno-exceptions '

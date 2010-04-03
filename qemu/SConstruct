@@ -1,6 +1,8 @@
 
 # SCons File to compile QEMU
 
+import os;
+
 Import('qemu_env')
 Import('qemu_target')
 Import('ptlsim_lib')
@@ -33,7 +35,7 @@ else:
     env.Append(CCFLAGS = '-g3')
     env.Append(CCFLAGS = '-O3 -march=native -mtune=native')
 
-env.Append(LINKFLAGS='-ldramsim -L../../DRAMSim');
+env.Append(LINKFLAGS=('-ldramsim -L%s/../DRAMSim -Wl,-rpath=%s/../DRAMSim' %(os.getcwd(), os.getcwd())));
 
 google_perftools = ARGUMENTS.get('gperf', None)
 if google_perftools != None:
