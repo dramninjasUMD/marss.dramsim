@@ -105,8 +105,7 @@ class MemoryController : public Controller
 
 		bool is_full(bool fromInterconnect = false, MemoryRequest *request = NULL) const {
 			bool dramsimIsFull = false; 
-			if (request != NULL)
-				dramsimIsFull = !mem->WillAcceptTransaction();
+			dramsimIsFull = !mem->WillAcceptTransaction();
 			return pendingRequests_.isFull() || dramsimIsFull;
 		}
 

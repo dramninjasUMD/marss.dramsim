@@ -35,7 +35,9 @@ else:
     env.Append(CCFLAGS = '-g3')
     env.Append(CCFLAGS = '-O3 -march=native -mtune=native')
 
-env.Append(LINKFLAGS=('-ldramsim -L%s/../DRAMSim -Wl,-rpath=%s/../DRAMSim' %(os.getcwd(), os.getcwd())));
+dramsim_path= ARGUMENTS.get('dramsim', '%s/DRAMSim2' % (os.environ['HOME'] ))
+if os.path.isdir(dramsim_path):
+	env.Append(LINKFLAGS=('-ldramsim -L%s -Wl,-rpath=%s' %(dramsim_path, dramsim_path)));
 
 google_perftools = ARGUMENTS.get('gperf', None)
 if google_perftools != None:

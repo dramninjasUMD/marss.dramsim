@@ -29,8 +29,13 @@ env['CPPPATH'].append("%s/%s" % (qemu_dir, "fpu"))
 env['CPPPATH'].append("%s/%s" % (qemu_dir, "x86_64-softmmu"))
 
 #dramsim 
-env['CPPPATH'].append(os.getcwd() + "/../DRAMSim");
-env.Append(CCFLAGS = '-DDRAMSIM')
+dramsim_path= ARGUMENTS.get('dramsim', '%s/DRAMSim2' % (os.environ['HOME'] ))
+#this is probably not enough, should probably check to make sure there's an actual library there
+if os.path.isdir(dramsim_path):
+	env['CPPPATH'].append(dramsim_path);
+	env.Append(CCFLAGS = '-DDRAMSIM')
+
+
 
 optimization_defs = '-fno-trapping-math -fno-stack-protector -fno-exceptions '
 optimization_defs += '-fno-rtti -funroll-loops -fno-strict-aliasing '

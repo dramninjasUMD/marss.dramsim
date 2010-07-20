@@ -342,7 +342,7 @@ class CacheController : public Controller
 
 		void print(ostream& os) const;
 
-		bool is_full(bool fromInterconnect = false) const {
+		bool is_full(bool fromInterconnect = false, MemoryRequest *req = NULL) const {
 			if(pendingRequests_.count() >= (
 						pendingRequests_.size() - 4)) {
 				return true;
