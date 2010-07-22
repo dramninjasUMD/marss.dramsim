@@ -1,3 +1,2 @@
 handle SIGUSR1 SIGUSR2 nostop noprint
-break memoryController.cpp:300
 info breakpoints
