@@ -34,9 +34,9 @@
 
 #ifdef DRAMSIM
 #include <DRAMSim.h>
+using DRAMSim::MemorySystem;
 #endif
 
-using DRAMSim::MemorySystem;
 
 namespace Memory {
 
@@ -105,7 +105,9 @@ class MemoryController : public Controller
 
 		bool is_full(bool fromInterconnect = false, MemoryRequest *request = NULL) const {
 			bool dramsimIsFull = false; 
+#ifdef DRAMSIM
 			dramsimIsFull = !mem->WillAcceptTransaction();
+#endif
 			return pendingRequests_.isFull() || dramsimIsFull;
 		}
 
