@@ -378,22 +378,8 @@ void MemoryHierarchy::clock()
 	{
 		((MemoryController*)memoryController_)->mem->update();	
 	}
-
-	if ((sim_cycle/3) % 50000 == 0 && sim_cycle%10 == 0)
-	{
-		uint64_t mem_cycle = ((MemoryController*)memoryController_)->mem->currentClockCycle;
-		printf("\n[%llu|%llu]: Added Transactions read=%llu, write=%llu ", sim_cycle, mem_cycle, reads_added,  writes_added); 
-		for (int i=0; i<NUMBER_OF_CORES; i++)
-		{
-			printf("[c=%d read misses=%llu write_misses=%llu] ", i, read_misses[i], write_misses[i]);
-			read_misses[i] = 0;
-			write_misses[i] = 0;
-		}
-		printf("\n");
-		reads_added=0; 
-		writes_added=0;
-	}
 #endif
+
 	Event *event;
 	while(!eventQueue_.empty()) {
 		event = eventQueue_.head();
