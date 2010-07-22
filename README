@@ -1,3 +1,9 @@
+To make this work with DRAMSim2, grab a copy of DRAMSim2 off github (see http://github.com/dramninjasUMD/DRAMSim2 )
+
+- make libdramsim.so in DRAMSim2
+- go into the marss tree, do a scons dramsim=/path/to/dramsim (if you checked out DRAMSim2 to your home folder this will be the default)
+- more details later; currently the two aren't playing well together
+
 MARSS-x86 : Micro-Architecture & System Simulator for x86
 =========================================================
 
