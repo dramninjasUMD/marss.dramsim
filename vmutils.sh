@@ -115,6 +115,16 @@ function vmrun() {
 	__vmpopd
 }
 
+function vmclean() {
+	if [ -z "$1" ] ; then
+		echo "specify a number"
+		return
+	fi 
+	__vmpushd "$MARSS_DIR"
+	rm hda$1.qcow2 hdb$1.qcow2 hdc$1.raw run$1.stats run$1.log simconfig$1.cfg simulate$1.sh
+	__vmpopd
+}
+
 # vmsetup x desc -- setup vm x with a sim description 
 # This command creates the necessary files, copies a simulate.sh file into the hdc disk image which can be auto launched if the VM is setup the right way.
 # This function does the heavy lifting of this script -- if it sounds interesting, send dramninjas (at) gmail (dot) com an email and I can explain how
