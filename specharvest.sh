@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash -x
 
 # This script "harvests" the commands from specinvoke and generates little shell
 # scripts that will run each command of the specinvoke inside of a MARSS virtual machine. 
@@ -61,7 +61,11 @@ function specinvoke_to_cmd_strings() {
 	do
 		#echo back all non-commented lines
 		if [ ! ${line:0:1} == "#" ] ; then
-			echo $line
+			# bashfu note: this grabs the first "word" from the line 
+			filename=${line%% *}
+			if [ -f "$filename" ] ; then
+				echo $line
+			fi 
 		fi
 	done
 	#change back the separator so as not to screw up the shell 
