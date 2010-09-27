@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash 
 
 # This script "harvests" the commands from specinvoke and generates little shell
 # scripts that will run each command of the specinvoke inside of a MARSS virtual machine. 
