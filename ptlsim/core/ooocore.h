@@ -31,7 +31,6 @@ static const int MAX_ROB_IDX_BIT = 12; // up to 4096 ROB entries
 // threaded mode.
 //
 
-
 //#define ENABLE_SIM_TIMING
 #ifdef ENABLE_SIM_TIMING
 #define time_this_scope(ct) CycleTimerScope ctscope(ct)
