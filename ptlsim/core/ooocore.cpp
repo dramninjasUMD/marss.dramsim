@@ -2022,7 +2022,7 @@ int OutOfOrderMachine::run(PTLsimConfig& config) {
 		  logenable = 1;
 	  }
 
-	  if(sim_cycle % 1000 == 0)
+	  if(sim_cycle % 10000 == 0)
 		  update_progress();
 
 	  // limit the ptl_logfile size
@@ -2164,6 +2164,12 @@ void OutOfOrderMachine::dump_state(ostream& os) {
   os << " memoryHierarchy: ",endl;
   memoryHierarchyPtr->dump_info(os);
 }
+#ifdef DRAMSIM
+void OutOfOrderMachine::simulation_done()
+{
+	memoryHierarchyPtr->simulation_done();
+}
+#endif
 
 namespace OutOfOrderModel {
   CycleTimer cttotal;

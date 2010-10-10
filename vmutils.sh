@@ -123,7 +123,7 @@ function vmrun() {
 
 		
 	echo "Launching simulation #$1: $SIM_DESCRIPTION"
-	local CMD_TO_RUN="SIM_DESC=\"$SIM_DESCRIPTION\" qemu/qemu-system-x86_64 -m 2GB -net nic,model=ne2k_pci -net user -simconfig \"simconfig$1.cfg\" -hda \"hda$1.qcow2\" $hdb_string $hdc_string -curses"
+	local CMD_TO_RUN="SIM_DESC=\"$SIM_DESCRIPTION\" gdb -x gdbrun -args qemu/qemu-system-x86_64 -m 2GB -net nic,model=ne2k_pci -net user -simconfig \"simconfig$1.cfg\" -hda \"hda$1.qcow2\" $hdb_string $hdc_string -curses"
 	screen -d -m -S "sim$1" bash -c "$CMD_TO_RUN"
 	__vmpopd
 }

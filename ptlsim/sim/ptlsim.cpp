@@ -576,6 +576,13 @@ PTLsimMachine* PTLsimMachine::getmachine(const char* name) {
   return *p;
 }
 
+#ifdef DRAMSIM
+void PTLsimMachine::simulation_done()
+{
+	assert(0);
+}
+#endif
+
 /* Currently executing machine model: */
 PTLsimMachine* curr_ptl_machine = null;
 
@@ -1135,6 +1142,9 @@ extern "C" uint8_t ptl_simulate() {
 
 	if(config.kill || config.kill_after_run) {
 		ptl_logfile << "Received simulation kill signal, stopped the simulation and killing the VM\n";
+#ifdef DRAMSIM
+		machine->simulation_done();
+#endif
 		ptl_logfile.flush();
 		ptl_logfile.close();
 #ifdef TRACE_RIP

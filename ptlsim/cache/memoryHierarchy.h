@@ -199,6 +199,9 @@ namespace Memory {
 	void free_message(Message* msg);
 
 	int get_core_pending_offchip_miss(W8 coreid);
+#ifdef DRAMSIM
+	void simulation_done();
+#endif
 
   private:
 

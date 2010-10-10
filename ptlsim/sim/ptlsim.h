@@ -56,6 +56,9 @@ struct PTLsimMachine {
   virtual void flush_tlb(Context& ctx);
   virtual void flush_tlb_virt(Context& ctx, Waddr virtaddr);
   virtual void reset(){};
+#ifdef DRAMSIM
+  virtual void simulation_done();
+#endif
   static void addmachine(const char* name, PTLsimMachine* machine);
   static void removemachine(const char* name, PTLsimMachine* machine);
   static PTLsimMachine* getmachine(const char* name);
