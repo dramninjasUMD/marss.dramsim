@@ -448,6 +448,12 @@ static void flush_stats()
 
     if(config.enable_mongo)
         write_mongo_stats();
+
+//FIXME: this assumes that flush_stats is only called at the end, which is true now but might not be true in the long run
+#ifdef DRAMSIM
+    machine->simulation_done();
+#endif
+
 }
 
 static void kill_simulation()
@@ -460,9 +466,6 @@ static void kill_simulation()
 #ifdef TRACE_RIP
     ptl_rip_trace.flush();
     ptl_rip_trace.close();
-#endif
-#ifdef DRAMSIM
-    machine->simulation_done();
 #endif
 
     exit(0);
