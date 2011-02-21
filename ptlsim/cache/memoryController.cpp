@@ -44,7 +44,7 @@ MemoryController::MemoryController(W8 coreid, char *name,
 #ifdef DRAMSIM
 //	mem = new MemorySystem(0, "ini/DDR3_micron_64M_8B_x4_sg15.ini", "system.ini", "../DRAMSim2", "MARSS"); /* this will NOT work */
 	extern uint64_t qemu_ram_size;
-	mem = DRAMSim::getMemorySystemInstance(0, "ini/DDR3_micron_8M_8B_x16_sg15.ini", "system.ini", "../DRAMSim2", "MARSS", qemu_ram_size>>20 ); 
+	mem = DRAMSim::getMultiChannelMemorySystemInstance("ini/DDR3_micron_8M_8B_x16_sg15.ini", "system.ini", "../DRAMSim2", "MARSS", qemu_ram_size>>20 ); 
 
 	typedef DRAMSim::Callback <Memory::MemoryController, void, uint, uint64_t, uint64_t> dramsim_callback_t;
 	DRAMSim::TransactionCompleteCB *read_cb = new dramsim_callback_t(this, &MemoryController::read_return_cb);

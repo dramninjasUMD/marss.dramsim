@@ -34,7 +34,7 @@
 
 #ifdef DRAMSIM
 #include <DRAMSim.h>
-using DRAMSim::MemorySystem;
+using DRAMSim::MultiChannelMemorySystem;
 #endif
 
 
@@ -84,7 +84,7 @@ class MemoryController : public Controller
 #ifdef DRAMSIM
 		void read_return_cb(uint, uint64_t, uint64_t);
 		void write_return_cb(uint, uint64_t, uint64_t);
-		MemorySystem *mem;
+		MultiChannelMemorySystem *mem;
 #endif
 		MemoryController(W8 coreid, char *name,
 				 MemoryHierarchy *memoryHierarchy);
@@ -104,11 +104,7 @@ class MemoryController : public Controller
 		int get_no_pending_request(W8 coreid);
 
 		bool is_full(bool fromInterconnect = false, MemoryRequest *request = NULL) const {
-			bool dramsimIsFull = false; 
-#ifdef DRAMSIM
-			dramsimIsFull = !mem->WillAcceptTransaction();
-#endif
-			return pendingRequests_.isFull() || dramsimIsFull;
+			return pendingRequests_.isFull();
 		}
 
 		void print_map(ostream& os)
