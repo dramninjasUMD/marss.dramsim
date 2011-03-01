@@ -671,11 +671,11 @@ extern "C" void ptl_machine_configure(const char* config_str_) {
         configparser.printusage(cerr, config);
         config.help=0;
     }
-
+/*
     if(config.kill) {
         kill_simulation();
     }
-
+*/
     // reset machine's initalized variable only if it is the first run
 
 
