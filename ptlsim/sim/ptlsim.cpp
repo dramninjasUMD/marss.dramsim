@@ -321,7 +321,7 @@ void print_banner(ostream& os, const PTLsimStats& stats, int argc, char** argv) 
 #endif
   os << "//  Copyright 1999-2007 Matt T. Yourst <yourst@yourst.com>", endl;
   os << "// ", endl;
-  os << "//  Revision ", stringify(SVNREV), " (", stringify(SVNDATE), ")", endl;
+  os << "//  Git branch '", stringify(GITBRANCH), "' on date ", stringify(GITDATE)," (HEAD: ", stringify(GITCOMMIT), ")", endl;
   os << "//  Built ", __DATE__, " ", __TIME__, " on ", stringify(BUILDHOST), " using gcc-",
     stringify(__GNUC__), ".", stringify(__GNUC_MINOR__), endl;
   os << "//  Running on ", hostinfo.nodename, ".", hostinfo.domainname, endl;
