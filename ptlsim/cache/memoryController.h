@@ -35,6 +35,7 @@
 #ifdef DRAMSIM
 #include <DRAMSim.h>
 using DRAMSim::MemorySystem;
+static const unsigned dramsim_transaction_size = 64;
 #endif
 
 
@@ -82,6 +83,7 @@ class MemoryController : public Controller
 
 	public:
 #ifdef DRAMSIM
+#define ALIGN_ADDRESS(addr, bytes) (addr & ~(((unsigned long)bytes) - 1L))
 		void read_return_cb(uint, uint64_t, uint64_t);
 		void write_return_cb(uint, uint64_t, uint64_t);
 		MemorySystem *mem;

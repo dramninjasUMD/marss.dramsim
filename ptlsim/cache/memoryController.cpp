@@ -43,6 +43,7 @@ MemoryController::MemoryController(W8 coreid, char *name,
 {
 #ifdef DRAMSIM
 //	mem = new MemorySystem(0, "ini/DDR3_micron_64M_8B_x4_sg15.ini", "system.ini", "../DRAMSim2", "MARSS"); /* this will NOT work */
+
 	extern uint64_t qemu_ram_size;
 	mem = DRAMSim::getMemorySystemInstance(0, "ini/DDR3_micron_8M_8B_x16_sg15.ini", "system.ini", "../DRAMSim2", "MARSS", qemu_ram_size>>20 ); 
 
@@ -164,6 +165,11 @@ bool MemoryController::handle_interconnect_cb(void *arg)
 #ifdef DRAMSIM
 	MemoryRequest *memRequest = queueEntry->request;
 	uint64_t physicalAddress = memRequest->get_physical_address();
+	// align the request; for now assume a 64 byte transaction 
+	// FIXME: in the future there should be some mechanism to check that the size
+	// 	of a transaction and maybe make sure it matches the LLC line size
+	physicalAddress = ALIGN_ADDRESS(physicalAddress, dramsim_transaction_size); 
+
 	bool isWrite = memRequest->get_type() == MEMORY_OP_WRITE || memRequest->get_type() == MEMORY_OP_UPDATE;
 	bool accepted = mem->addTransaction(isWrite,physicalAddress);
 	queueEntry->inUse = true;
@@ -196,7 +202,7 @@ void MemoryController::write_return_cb(uint id, uint64_t addr, uint64_t cycle)
 
 	foreach_list_mutable(pendingRequests_.list(), queueEntry, entry_t,
 			prev_t) {
-		if (queueEntry->request->get_physical_address() == addr)
+		if (ALIGN_ADDRESS(queueEntry->request->get_physical_address(),dramsim_transaction_size) == addr)
 		{
 			memdebug("[DRAMSIM] entry for address "<< std::hex << addr << std::dec);
 			access_completed_cb(queueEntry);
@@ -219,7 +225,7 @@ void MemoryController::read_return_cb(uint id, uint64_t addr, uint64_t cycle)
 
 	foreach_list_mutable(pendingRequests_.list(), queueEntry, entry_t,
 			prev_t) {
-		if (queueEntry->request->get_physical_address() == addr)
+		if (ALIGN_ADDRESS(queueEntry->request->get_physical_address(),dramsim_transaction_size) == addr)
 		{
 			memdebug("[DRAMSIM] entry for address "<< std::hex << addr << queueEntry->request << std::dec);
 			access_completed_cb(queueEntry);
