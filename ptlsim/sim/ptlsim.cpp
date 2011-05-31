@@ -467,8 +467,6 @@ static void kill_simulation()
 {
     assert(config.kill || config.kill_after_run);
 
-    flush_stats();
-
     ptl_logfile << "Received simulation kill signal, stopped the simulation and killing the VM\n";
 #ifdef TRACE_RIP
     ptl_rip_trace.flush();
@@ -685,6 +683,7 @@ extern "C" void ptl_machine_configure(const char* config_str_) {
     }
 /*
     if(config.kill) {
+        flush_stats();
         kill_simulation();
     }
 */
@@ -1174,9 +1173,17 @@ extern "C" uint8_t ptl_simulate() {
 	cerr << endl;
 	print_stats_in_log();
 
+    flush_stats();
+
 	if(config.kill || config.kill_after_run) {
         kill_simulation();
 	}
+
+    machine->first_run = 1;
+
+    if(config.stop) {
+        config.stop = false;
+    }
 
 	return 0;
 }

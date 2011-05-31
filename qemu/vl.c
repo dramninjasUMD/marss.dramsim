@@ -780,7 +780,7 @@ void cpu_disable_ticks(void)
 
 #ifdef MARSS_QEMU
 #define PTLSIM_FREQ 2.4e9 // 2GHz Frequency of Simulated CPU
-#define freq_to_ns(freq) (PTLSIM_FREQ/freq)
+#define freq_to_ns(freq) (1e9/freq)
 
 void cpu_set_sim_ticks(void)
 {
@@ -4228,8 +4228,8 @@ static void main_loop(void)
             }
 
             if (start_simulation) {
-                in_simulation = 1;
                 cpu_set_sim_ticks();
+                in_simulation = 1;
                 start_simulation = 0;
             }
 
@@ -4241,7 +4241,7 @@ static void main_loop(void)
 
 #ifndef CONFIG_IOTHREAD
 #ifdef MARSS_QEMU
-            if(in_simulation) {
+            if(in_simulation && !timer_alarm_pending) {
                 cur_cpu = first_cpu;
                 sim_cpu_exec();
             } else {
