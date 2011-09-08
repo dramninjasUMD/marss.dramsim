@@ -50,6 +50,17 @@ MemoryController::MemoryController(W8 coreid, const char *name,
     if(!memoryHierarchy_->get_machine().get_option(name, "latency", latency_)) {
         latency_ = 20;
     }
+#ifdef DRAMSIM
+
+	extern uint64_t qemu_ram_size;
+	mem = DRAMSim::getMemorySystemInstance(0, "ini/DDR3_micron_8M_8B_x16_sg15.ini", "system.ini", "../DRAMSim2", "MARSS", qemu_ram_size>>20 ); 
+
+	typedef DRAMSim::Callback <Memory::MemoryController, void, uint, uint64_t, uint64_t> dramsim_callback_t;
+	DRAMSim::TransactionCompleteCB *read_cb = new dramsim_callback_t(this, &MemoryController::read_return_cb);
+	DRAMSim::TransactionCompleteCB *write_cb = new dramsim_callback_t(this, &MemoryController::write_return_cb);
+	mem->RegisterCallbacks(read_cb, write_cb, NULL);
+
+#endif
 
     SET_SIGNAL_CB(name, "_Access_Completed", accessCompleted_,
             &MemoryController::access_completed_cb);
@@ -98,7 +109,7 @@ bool MemoryController::handle_interconnect_cb(void *arg)
 {
 	Message *message = (Message*)arg;
 
-	memdebug("Received message in Memory controller: ", *message, endl);
+	memdebug("Received message in Memory controller: " ,get_name() , " ", *message, endl);
 
 	if(message->hasData && message->request->get_type() !=
 			MEMORY_OP_UPDATE)
@@ -170,9 +181,25 @@ bool MemoryController::handle_interconnect_cb(void *arg)
 	if(banksUsed_[bank_no] == 0) {
 		banksUsed_[bank_no] = 1;
 		queueEntry->inUse = true;
+
+#ifndef DRAMSIM
 		memoryHierarchy_->add_event(&accessCompleted_, MEM_LATENCY,
 				queueEntry);
+#endif
 	}
+#ifdef DRAMSIM
+	MemoryRequest *memRequest = queueEntry->request;
+	uint64_t physicalAddress = memRequest->get_physical_address();
+	// align the request; for now assume a 64 byte transaction 
+	// FIXME: in the future there should be some mechanism to check that the size
+	// 	of a transaction and maybe make sure it matches the LLC line size
+	physicalAddress = ALIGN_ADDRESS(physicalAddress, dramsim_transaction_size); 
+
+	bool isWrite = memRequest->get_type() == MEMORY_OP_WRITE || memRequest->get_type() == MEMORY_OP_UPDATE;
+	bool accepted = mem->addTransaction(isWrite,physicalAddress);
+	queueEntry->inUse = true;
+	assert(accepted);
+#endif
 
 	return true;
 }
@@ -192,13 +219,55 @@ void MemoryController::print(ostream& os) const
     os << "banksUsed_: ", banksUsed_, endl;
 	os << "---End Memory-Controller: ", get_name(), endl;
 }
+#ifdef DRAMSIM
+void MemoryController::write_return_cb(uint id, uint64_t addr, uint64_t cycle)
+{
+	MemoryQueueEntry *queueEntry = NULL;
+	memdebug("[DRAMSIM] WRITE ACK" <<std::hex<<addr<<std::dec);
 
+	foreach_list_mutable(pendingRequests_.list(), queueEntry, entry_t,
+			prev_t) {
+		if (ALIGN_ADDRESS(queueEntry->request->get_physical_address(),dramsim_transaction_size) == addr)
+		{
+			memdebug("[DRAMSIM] entry for address "<< std::hex << addr << std::dec);
+			access_completed_cb(queueEntry);
+			return;
+		}
+	}
+	assert(0);
+}
+
+void MemoryController::read_return_cb(uint id, uint64_t addr, uint64_t cycle)
+{
+	//make sure something is there
+//	assert(pending_map.find(addr) != pending_map.end());
+	// no delay here since we've already waited up to this cycle
+//	Message *message = pending_map[addr];
+	MemoryQueueEntry *queueEntry = NULL;
+
+
+	memdebug("[DRAMSIM] READ RETURN 0x"<<std::hex<<addr<<std::dec);
+
+	foreach_list_mutable(pendingRequests_.list(), queueEntry, entry_t,
+			prev_t) {
+		if (ALIGN_ADDRESS(queueEntry->request->get_physical_address(),dramsim_transaction_size) == addr)
+		{
+			memdebug("[DRAMSIM] entry for address "<< std::hex << addr << queueEntry->request << std::dec);
+			access_completed_cb(queueEntry);
+			return;
+		}
+	}
+	assert(0);
+
+}
+
+#endif
 bool MemoryController::access_completed_cb(void *arg)
 {
     MemoryQueueEntry *queueEntry = (MemoryQueueEntry*)arg;
-
     bool kernel = queueEntry->request->is_kernel();
 
+#ifndef DRAMSIM
     int bank_no = get_bank_id(queueEntry->request->
             get_physical_address());
     banksUsed_[bank_no] = 0;
@@ -233,31 +302,34 @@ bool MemoryController::access_completed_cb(void *arg)
             break;
         }
     }
+#endif
 
     if(!queueEntry->annuled) {
 
         /* Send response back to cache */
         memdebug("Memory access done for Request: ", *queueEntry->request,
                 endl);
-
         wait_interconnect_cb(queueEntry);
     } else {
+		 memdebug("!!!!!annuled entry!!!"); 
         queueEntry->request->decRefCounter();
         ADD_HISTORY_REM(queueEntry->request);
         pendingRequests_.free(queueEntry);
     }
 
-    return true;
+	return true;
 }
 
 bool MemoryController::wait_interconnect_cb(void *arg)
 {
+
 	MemoryQueueEntry *queueEntry = (MemoryQueueEntry*)arg;
 
 	bool success = false;
 
 	/* Don't send response if its a memory update request */
 	if(queueEntry->request->get_type() == MEMORY_OP_UPDATE) {
+		memdebug("!!!! ignoring update request !!!!" );
 		queueEntry->request->decRefCounter();
 		ADD_HISTORY_REM(queueEntry->request);
 		pendingRequests_.free(queueEntry);
@@ -282,7 +354,7 @@ bool MemoryController::wait_interconnect_cb(void *arg)
 	} else {
 		queueEntry->request->decRefCounter();
 		ADD_HISTORY_REM(queueEntry->request);
-        pendingRequests_.free(queueEntry);
+		pendingRequests_.free(queueEntry);
 
 		if(!pendingRequests_.isFull()) {
 			memoryHierarchy_->set_controller_full(this, false);

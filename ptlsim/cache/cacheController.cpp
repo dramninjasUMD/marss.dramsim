@@ -225,6 +225,7 @@ bool CacheController::handle_interconnect_cb(void *arg)
 			/* Found an dependency */
 			memdebug("dependent entry: ", *dependsOn, endl);
 			dependsOn->depends = queueEntry->idx;
+			dependsOn->dependsAddr = queueEntry->request->get_physical_address();
 			OP_TYPE type = queueEntry->request->get_type();
             bool kernel_req = queueEntry->request->is_kernel();
 			if(type == MEMORY_OP_READ) {

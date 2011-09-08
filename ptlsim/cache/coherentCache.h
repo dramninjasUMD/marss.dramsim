@@ -217,6 +217,9 @@ namespace Memory {
                 void send_update_message(CacheQueueEntry *queueEntry,
                         W64 tag =-1);
 
+                void send_update_message(CacheQueueEntry *queueEntry,
+                        W64 tag =-1);
+
 
             public:
                 CacheController(W8 coreid, const char *name,
@@ -244,7 +247,7 @@ namespace Memory {
 
                 void print(ostream& os) const;
 
-                bool is_full(bool fromInterconnect = false) const {
+                bool is_full(bool fromInterconnect = false, MemoryRequest *request = NULL) const {
                     if(fromInterconnect) {
                         // We keep some free entries for interconnect
                         // so if the queue is 100% full then only

@@ -1739,6 +1739,9 @@ namespace OutOfOrderModel {
         virtual void flush_tlb_virt(Context& ctx, Waddr virtaddr);
         void flush_all_pipelines();
         virtual void reset();
+#ifdef DRAMSIM
+		  virtual void simulation_done();
+#endif
         ~OutOfOrderMachine();
 
     };

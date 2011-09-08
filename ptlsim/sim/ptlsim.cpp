@@ -478,6 +478,10 @@ static void flush_stats()
     if(time_stats_file) {
         time_stats_file->close();
     }
+//FIXME: this assumes that flush_stats is only called at the end, which is true now but might not be true in the long run
+#ifdef DRAMSIM
+    machine->simulation_done();
+#endif
 }
 
 static void kill_simulation()
@@ -500,7 +504,6 @@ static void kill_simulation()
 
     ptl_logfile.flush();
     ptl_logfile.close();
-
     ptl_quit();
 }
 
@@ -647,6 +650,13 @@ PTLsimMachine* PTLsimMachine::getmachine(const char* name) {
   return *p;
 }
 
+#ifdef DRAMSIM
+void PTLsimMachine::simulation_done()
+{
+	assert(0);
+}
+#endif
+
 /* Currently executing machine model: */
 PTLsimMachine* curr_ptl_machine = NULL;
 
@@ -694,12 +704,12 @@ extern "C" void ptl_machine_configure(const char* config_str_) {
         configparser.printusage(cerr, config);
         config.help=0;
     }
-
+/*
     if(config.kill) {
         flush_stats();
         kill_simulation();
     }
-
+*/
     // reset machine's initalized variable only if it is the first run
 
 

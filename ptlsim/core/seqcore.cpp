@@ -1658,6 +1658,9 @@ struct SequentialMachine: public PTLsimMachine {
   virtual void update_stats(PTLsimStats* stats) {
     // (nop)
   }
+#ifdef DRAMSIM
+  void simulation_done() { };
+#endif
 
 };
 

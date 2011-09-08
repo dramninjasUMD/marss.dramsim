@@ -156,7 +156,7 @@ class CPUController : public Controller
 			return access_fast_path(NULL, request);
 		}
 
-		bool is_full(bool fromInterconnect = false) const {
+		bool is_full(bool fromInterconnect = false, MemoryRequest *request = NULL) const {
 			return pendingRequests_.isFull();
 		}
 

@@ -775,7 +775,7 @@ bool OutOfOrderCore::runcycle() {
     ThreadContext* thread = threads[i];
     if unlikely (!thread->ctx.running) break;
 
-	if unlikely ((sim_cycle - thread->last_commit_at_cycle) > 4*4096) {
+	if unlikely ((sim_cycle - thread->last_commit_at_cycle) > 50*4096) {
       stringbuf sb;
       sb << "[vcpu ", thread->ctx.cpu_index, "] thread ", thread->threadid, ": WARNING: At cycle ",
         sim_cycle, ", ", total_user_insns_committed,  " user commits: no instructions have committed for ",
@@ -2029,7 +2029,7 @@ int OutOfOrderMachine::run(PTLsimConfig& config) {
 		  logenable = 1;
 	  }
 
-	  if(sim_cycle % 1000 == 0)
+	  if(sim_cycle % 10000 == 0)
 		  update_progress();
 
 	  // limit the ptl_logfile size
@@ -2178,6 +2178,12 @@ void OutOfOrderMachine::dump_state(ostream& os) {
   os << " memoryHierarchy: ",endl;
   memoryHierarchyPtr->dump_info(os);
 }
+#ifdef DRAMSIM
+void OutOfOrderMachine::simulation_done()
+{
+	memoryHierarchyPtr->simulation_done();
+}
+#endif
 
 namespace OutOfOrderModel {
   CycleTimer cttotal;

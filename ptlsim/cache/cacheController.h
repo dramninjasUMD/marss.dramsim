@@ -70,7 +70,7 @@ struct CacheQueueEntry : public FixStateListObject
 {
 	public:
 		int depends;
-        W64 dependsAddr;
+		W64 dependsAddr;
 
 		bitvec<CACHE_NO_EVENTS> eventFlags;
 
@@ -86,7 +86,7 @@ struct CacheQueueEntry : public FixStateListObject
 			sender = NULL;
 			sendTo = NULL;
 			depends = -1;
-            dependsAddr = -1;
+			dependsAddr = -1;
 			eventFlags.reset();
 			annuled = false;
 			prefetch = false;
@@ -240,7 +240,7 @@ class CacheController : public Controller
 
 		void print(ostream& os) const;
 
-		bool is_full(bool fromInterconnect = false) const {
+		bool is_full(bool fromInterconnect = false, MemoryRequest *req = NULL) const {
 			if(pendingRequests_.count() >= (
 						pendingRequests_.size() - 4)) {
 				return true;
