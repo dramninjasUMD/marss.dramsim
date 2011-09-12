@@ -217,10 +217,6 @@ namespace Memory {
                 void send_update_message(CacheQueueEntry *queueEntry,
                         W64 tag =-1);
 
-                void send_update_message(CacheQueueEntry *queueEntry,
-                        W64 tag =-1);
-
-
             public:
                 CacheController(W8 coreid, const char *name,
                         MemoryHierarchy *memoryHierarchy, CacheType type);

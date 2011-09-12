@@ -242,6 +242,8 @@ namespace Memory {
 
     void add_cache_mem_controller(Controller* cont) {
         allControllers_.push(cont);
+        //FIXME: assumes only one controller
+        memoryController_ = cont; 
     }
 
     void add_interconnect(Interconnect* conn) {

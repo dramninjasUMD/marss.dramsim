@@ -653,7 +653,8 @@ PTLsimMachine* PTLsimMachine::getmachine(const char* name) {
 #ifdef DRAMSIM
 void PTLsimMachine::simulation_done()
 {
-	assert(0);
+    //TODO: figure out how to get a memory hierarchy pointer with the new
+    // config mechanism and send simulation done to the dramsim memory controller
 }
 #endif
 
