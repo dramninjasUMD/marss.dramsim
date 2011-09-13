@@ -27,6 +27,9 @@
 #include <ptl-qemu.h>
 
 #include <test.h>
+#ifdef ENABLE_GPERF
+#include <google/profiler.h>
+#endif
 /*
  * DEPRECATED CONFIG OPTIONS:
  perfect_cache
@@ -487,6 +490,9 @@ static void flush_stats()
 static void kill_simulation()
 {
     assert(config.kill || config.kill_after_run);
+#ifdef ENABLE_GPERF
+    ProfilerStop(); 
+#endif 
 
     ptl_logfile << "Received simulation kill signal, stopped the simulation and killing the VM\n";
 #ifdef TRACE_RIP
@@ -1212,8 +1218,11 @@ extern "C" uint8_t ptl_simulate() {
         ptl_logfile << " sim_cycle: ", sim_cycle;
 		ptl_logfile << endl;
     }
-
+#ifdef ENABLE_GPERF
+    ProfilerStart("marss.prof");
+#endif
 	machine->run(config);
+
 
 	if (config.stop_at_user_insns <= total_user_insns_committed || config.kill == true
 			|| config.stop == true) {

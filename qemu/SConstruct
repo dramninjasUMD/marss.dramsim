@@ -42,6 +42,7 @@ if os.path.isdir(dramsim_path):
 google_perftools = ARGUMENTS.get('gperf', None)
 if google_perftools != None:
     env.Append(LIBS = 'tcmalloc')
+    env.Append(LIBS = 'profiler')
     env.Append(LIBPATH = google_perftools)
     env.Append(LINKFLAGS = '-Wl,-rpath')
     env.Append(LINKFLAGS = '-Wl,%s' % google_perftools)
