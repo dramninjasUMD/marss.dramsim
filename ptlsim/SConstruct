@@ -29,6 +29,11 @@ env['CPPPATH'].append("%s/%s" % (qemu_dir, "x86_64-softmmu"))
 optimization_defs = '-fno-trapping-math -fno-stack-protector -fno-exceptions '
 optimization_defs += '-fno-rtti -funroll-loops -fno-strict-aliasing '
 
+gperf = ARGUMENTS.get('gperf', None)
+if gperf != None: 
+    env.Append(CCFLAGS = '-DENABLE_GPERF'); 
+    env['CPPPATH'].append(gperf+"../include")
+
 debug = ARGUMENTS.get('debug', 0)
 if int(debug):
     env.Append(CCFLAGS = '-g')
