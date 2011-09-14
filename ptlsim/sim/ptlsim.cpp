@@ -1086,6 +1086,8 @@ static void setup_sim_stats()
     sys_uname(&hostinfo);
     date = get_date();
 
+    base_tags << config.machine_config << ",";
+
     if(config.bench_name.size() > 0)
         base_tags << config.bench_name << ",";
     base_tags << hostinfo.nodename << "." << hostinfo.domainname << ",";
@@ -1214,7 +1216,7 @@ extern "C" uint8_t ptl_simulate() {
 
 
 	if (config.stop_at_user_insns <= total_user_insns_committed || config.kill == true
-			|| config.stop == true) {
+			|| config.stop == true || config.stop_at_cycle < sim_cycle) {
 		machine->stopped = 1;
 	}
 
@@ -1239,7 +1241,6 @@ extern "C" uint8_t ptl_simulate() {
 
     stats = &global_stats;
 	W64 tsc_at_end = rdtsc();
-	machine->update_stats(stats);
 	curr_ptl_machine = NULL;
 
 	W64 seconds = W64(ticks_to_seconds(tsc_at_end - tsc_at_start));
@@ -1356,6 +1357,58 @@ void shutdown_subsystems() {
   //
   shutdown_uops();
   shutdown_decode();
+}
+
+/* IO Signal Support */
+
+struct QemuIOSignal : public FixStateListObject
+{
+    QemuIOCB fn;
+    void *arg;
+    W64 cycle;
+
+    void init()
+    {
+        fn = 0;
+        arg = 0;
+        cycle = 0;
+    }
+
+    void setup(QemuIOCB fn, void *arg, int delay)
+    {
+        this->fn = fn;
+        this->arg = arg;
+        this->cycle = sim_cycle + delay;
+    }
+};
+
+static FixStateList<QemuIOSignal, 32> *qemuIOEvents = NULL;
+
+void init_qemu_io_events()
+{
+    qemuIOEvents = new FixStateList<QemuIOSignal, 32>();
+}
+
+void clock_qemu_io_events()
+{
+    QemuIOSignal *signal;
+    foreach_list_mutable(qemuIOEvents->list(), signal, entry, prev) {
+        if (signal->cycle <= sim_cycle) {
+            ptl_logfile << "Executing QEMU IO Event at " << sim_cycle << endl;
+            signal->fn(signal->arg);
+            qemuIOEvents->free(signal);
+        }
+    }
+}
+
+extern "C" void add_qemu_io_event(QemuIOCB fn, void *arg, int delay)
+{
+    QemuIOSignal* signal = qemuIOEvents->alloc();
+    assert(signal);
+
+    signal->setup(fn, arg, delay);
+
+    ptl_logfile << "Added QEMU IO event for " << (sim_cycle + delay) << endl;
 }
 
 #endif // CONFIG_ONLY

@@ -64,14 +64,17 @@ namespace Memory {
         {
             public:
                 int depends;
+                int waitFor;
                 W64 dependsAddr;
 
                 bitvec<CACHE_NO_EVENTS> eventFlags;
 
-                Interconnect *sender;
-                Interconnect *sendTo;
+                Interconnect  *sender;
+                Interconnect  *sendTo;
                 MemoryRequest *request;
-                CacheLine *line;
+                Controller    *source;
+                Controller    *dest;
+                CacheLine     *line;
                 void *m_arg;
                 bool annuled;
                 bool evicting;
@@ -80,19 +83,36 @@ namespace Memory {
                 bool responseData;
 
                 void init() {
-                    request             = NULL;
-                    sender              = NULL;
-                    sendTo              = NULL;
-                    line                = NULL;
-                    m_arg               = NULL;
-                    depends             = -1;
-                    dependsAddr         = -1;
-                    annuled             = false;
-                    evicting            = false;
-                    isSnoop             = false;
-                    isShared            = false;
-                    responseData        = false;
+                    request      = NULL;
+                    sender       = NULL;
+                    sendTo       = NULL;
+                    line         = NULL;
+                    m_arg        = NULL;
+                    depends      = -1;
+                    waitFor      = -1;
+                    dependsAddr  = -1;
+                    annuled      = false;
+                    evicting     = false;
+                    isSnoop      = false;
+                    isShared     = false;
+                    responseData = false;
+                    source       = NULL;
+                    dest         = NULL;
                     eventFlags.reset();
+                }
+
+                /* This is not created as copy constructor because
+                 * there are some variables from parent class that
+                 * we don't want to copy in this function. */
+                void copy(CacheQueueEntry* ent)
+                {
+                    request = ent->request;
+                    sender = ent->sender;
+                    sendTo = ent->sendTo;
+                    dest = ent->dest;
+                    source = ent->source;
+                    m_arg = ent->m_arg;
+                    request->incRefCounter();
                 }
 
                 ostream& print(ostream& os) const {
@@ -120,6 +140,7 @@ namespace Memory {
                         os << "line[none]";
 
                     os << "depends[" << depends;
+                    os << "] waitFor[" << waitFor;
                     os << "] eventFlags[" << eventFlags;
                     os << "] annuled[" << annuled;
                     os << "] evicting[" << evicting;
@@ -170,6 +191,8 @@ namespace Memory {
                 // caches where L2 is connected to L1i and L1d
                 Interconnect *upperInterconnect2_;
 
+                Controller *directory_;
+                Controller *lowerCont_;
 
                 // All signals of cache
                 Signal clearEntry_;
@@ -200,23 +223,15 @@ namespace Memory {
 
                 bool handle_lower_interconnect(Message &message);
 
-                void handle_snoop_hit(CacheQueueEntry *queueEntry);
-                void handle_local_hit(CacheQueueEntry *queueEntry);
                 void handle_cache_insert(CacheQueueEntry *queueEntry,
                         W64 oldTag);
                 bool is_line_valid(CacheLine *line);
+                bool is_line_in_use(W64 tag);
 
-                void complete_request(Message &message, CacheQueueEntry
+                bool complete_request(Message &message, CacheQueueEntry
                         *queueEntry);
 
-                // This function is used to maintain the inclusive
-                // property between L1 and L2/L3
-                void send_message(CacheQueueEntry *queueEntry,
-                        Interconnect *interconn, OP_TYPE type, W64 tag =-1);
-
-                void send_update_message(CacheQueueEntry *queueEntry,
-                        W64 tag =-1);
-
+                void get_directory(Interconnect *interconn);
 
             public:
                 CacheController(W8 coreid, const char *name,
@@ -249,14 +264,14 @@ namespace Memory {
                         // We keep some free entries for interconnect
                         // so if the queue is 100% full then only
                         // return false else return true
-                        assert(!pendingRequests_.isFull());
-                        return pendingRequests_.isFull();
+                        return (pendingRequests_.count() >= (
+                                    pendingRequests_.size() - 4));
                     }
                     // Otherwise we keep 10 entries free for interconnect
                     // or some internal requests (for example, memory update
                     // requests are created internally)
                     if(pendingRequests_.count() >= (
-                                pendingRequests_.size() - 10)) {
+                                pendingRequests_.size() - 20)) {
                         return true;
                     }
                     return false;
@@ -280,10 +295,17 @@ namespace Memory {
 
                 Statable* get_stats() { return new_stats; }
 
+                void send_message(CacheQueueEntry *queueEntry,
+                        Interconnect *interconn, OP_TYPE type, W64 tag =-1);
+
                 virtual void send_evict_to_upper(CacheQueueEntry *entry, W64 tag=-1);
                 virtual void send_evict_to_lower(CacheQueueEntry *entry, W64 tag=-1);
                 virtual void send_update_to_upper(CacheQueueEntry *entry, W64 tag=-1);
                 virtual void send_update_to_lower(CacheQueueEntry *entry, W64 tag=-1);
+
+                Interconnect* get_lower_intrconn() { return lowerInterconnect_;}
+                Controller* get_directory() { return directory_; }
+                CacheQueueEntry* get_new_queue_entry();
 
         };
 
