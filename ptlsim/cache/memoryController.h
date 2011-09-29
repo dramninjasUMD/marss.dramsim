@@ -33,6 +33,13 @@
 #include <superstl.h>
 #include <memoryStats.h>
 
+#ifdef DRAMSIM
+#include <DRAMSim.h>
+using DRAMSim::MemorySystem;
+static const unsigned dramsim_transaction_size = 64;
+#endif
+
+
 namespace Memory {
 
 struct MemoryQueueEntry : public FixStateListObject
@@ -84,6 +91,12 @@ class MemoryController : public Controller
 	public:
 		MemoryController(W8 coreid, const char *name,
 				 MemoryHierarchy *memoryHierarchy);
+#ifdef DRAMSIM
+#define ALIGN_ADDRESS(addr, bytes) (addr & ~(((unsigned long)bytes) - 1L))
+		void read_return_cb(uint, uint64_t, uint64_t);
+		void write_return_cb(uint, uint64_t, uint64_t);
+		MemorySystem *mem;
+#endif
 		bool handle_request_cb(void *arg);
 		bool handle_interconnect_cb(void *arg);
 		int access_fast_path(Interconnect *interconnect,
@@ -100,8 +113,12 @@ class MemoryController : public Controller
 
 		int get_no_pending_request(W8 coreid);
 
-		bool is_full(bool fromInterconnect = false) const {
-			return pendingRequests_.isFull();
+		bool is_full(bool fromInterconnect = false, MemoryRequest *request = NULL) const {
+			bool dramsimIsFull = false; 
+#ifdef DRAMSIM
+			dramsimIsFull = !mem->WillAcceptTransaction();
+#endif
+			return pendingRequests_.isFull() || dramsimIsFull;
 		}
 
 		void print_map(ostream& os)

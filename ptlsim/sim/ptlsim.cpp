@@ -26,6 +26,9 @@
 #include <ptl-qemu.h>
 
 #include <test.h>
+#ifdef ENABLE_GPERF
+#include <google/profiler.h>
+#endif
 /*
  * DEPRECATED CONFIG OPTIONS:
  perfect_cache
@@ -463,11 +466,18 @@ static void flush_stats()
     if(time_stats_file) {
         time_stats_file->close();
     }
+//FIXME: this assumes that flush_stats is only called at the end, which is true now but might not be true in the long run
+#ifdef DRAMSIM
+    machine->simulation_done();
+#endif
 }
 
 static void kill_simulation()
 {
     assert(config.kill || config.kill_after_run);
+#ifdef ENABLE_GPERF
+    ProfilerStop(); 
+#endif 
 
     ptl_logfile << "Received simulation kill signal, stopped the simulation and killing the VM\n";
 #ifdef TRACE_RIP
@@ -485,7 +495,6 @@ static void kill_simulation()
 
     ptl_logfile.flush();
     ptl_logfile.close();
-
     ptl_quit();
 }
 
@@ -621,6 +630,14 @@ PTLsimMachine* PTLsimMachine::getmachine(const char* name) {
   return *p;
 }
 
+#ifdef DRAMSIM
+void PTLsimMachine::simulation_done()
+{
+    //TODO: figure out how to get a memory hierarchy pointer with the new
+    // config mechanism and send simulation done to the dramsim memory controller
+}
+#endif
+
 /* Currently executing machine model: */
 PTLsimMachine* curr_ptl_machine = NULL;
 
@@ -668,12 +685,12 @@ extern "C" void ptl_machine_configure(const char* config_str_) {
         configparser.printusage(cerr, config);
         config.help=0;
     }
-
+/*
     if(config.kill) {
         flush_stats();
         kill_simulation();
     }
-
+*/
     // reset machine's initalized variable only if it is the first run
 
 
@@ -1130,8 +1147,11 @@ extern "C" uint8_t ptl_simulate() {
         ptl_logfile << " sim_cycle: ", sim_cycle;
 		ptl_logfile << endl;
     }
-
+#ifdef ENABLE_GPERF
+    ProfilerStart("marss.prof");
+#endif
 	machine->run(config);
+
 
 	if (config.stop_at_user_insns <= total_user_insns_committed || config.kill == true
 			|| config.stop == true || config.stop_at_cycle < sim_cycle) {

@@ -45,11 +45,11 @@
 
 #ifdef DEBUG_MEMORY
 #ifdef DEBUG_WITH_FILE_NAME
-#define memdebug(...) if(logable(5)) { \
+#define memdebug(...) if(logable(0)) { \
 	ptl_logfile << __FILE__, ":", __LINE__,":\t", \
 	__VA_ARGS__ ; ptl_logfile.flush(); }
 #else
-#define memdebug(...) if(logable(5)) { \
+#define memdebug(...) if(logable(0)) { \
 	ptl_logfile << __VA_ARGS__ ; } //ptl_logfile.flush();
 #endif
 #else
@@ -226,6 +226,9 @@ namespace Memory {
 	void free_message(Message* msg);
 
 	int get_core_pending_offchip_miss(W8 coreid);
+#ifdef DRAMSIM
+	void simulation_done();
+#endif
 
     BaseMachine& get_machine() { return machine_; }
 
@@ -235,6 +238,8 @@ namespace Memory {
 
     void add_cache_mem_controller(Controller* cont) {
         allControllers_.push(cont);
+        //FIXME: assumes only one controller
+        memoryController_ = cont; 
     }
 
     void add_interconnect(Interconnect* conn) {

@@ -14,7 +14,7 @@
 #include <superstl.h>
 
 // For debugging of messages before crashes:
-bool force_synchronous_streams = false;
+bool force_synchronous_streams = true;
 
 #include <execinfo.h>
 
@@ -85,6 +85,8 @@ abort:
   cerr << sb;
   cerr.flush();
   cout.flush();
+  std::cerr.flush();
+  std::cout.flush();
   abort();
 }
 

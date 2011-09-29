@@ -1,0 +1,3 @@
+handle SIGUSR1 SIGUSR2 nostop noprint
+info breakpoints
+run
