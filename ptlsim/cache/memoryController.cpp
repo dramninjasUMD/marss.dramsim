@@ -169,6 +169,7 @@ bool MemoryController::handle_interconnect_cb(void *arg)
 	}
 
 	queueEntry->request = message->request;
+	queueEntry->source = (Controller*)message->origin;
 
 	queueEntry->request->incRefCounter();
 	ADD_HISTORY_ADD(queueEntry->request);
@@ -181,9 +182,8 @@ bool MemoryController::handle_interconnect_cb(void *arg)
 	if(banksUsed_[bank_no] == 0) {
 		banksUsed_[bank_no] = 1;
 		queueEntry->inUse = true;
-
 #ifndef DRAMSIM
-		memoryHierarchy_->add_event(&accessCompleted_, MEM_LATENCY,
+		memoryHierarchy_->add_event(&accessCompleted_, latency_,
 				queueEntry);
 #endif
 	}
@@ -297,7 +297,7 @@ bool MemoryController::access_completed_cb(void *arg)
         if(bank_no == bank_no_2 && entry->inUse == false) {
             entry->inUse = true;
             memoryHierarchy_->add_event(&accessCompleted_,
-                    MEM_LATENCY, entry);
+                    latency_, entry);
             banksUsed_[bank_no] = 1;
             break;
         }
@@ -339,6 +339,7 @@ bool MemoryController::wait_interconnect_cb(void *arg)
 	/* First send response of the current request */
 	Message& message = *memoryHierarchy_->get_message();
 	message.sender = this;
+	message.dest = queueEntry->source;
 	message.request = queueEntry->request;
 	message.hasData = true;
 
@@ -368,7 +369,7 @@ void MemoryController::annul_request(MemoryRequest *request)
     MemoryQueueEntry *queueEntry;
     foreach_list_mutable(pendingRequests_.list(), queueEntry,
             entry, nextentry) {
-        if(queueEntry->request == request) {
+        if(queueEntry->request->is_same(request)) {
             queueEntry->annuled = true;
             if(!queueEntry->inUse) {
                 queueEntry->request->decRefCounter();

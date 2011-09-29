@@ -19,10 +19,6 @@
 #include <statelist.h>
 #include <superstl.h>
 
-// Include ooocore.h for stats - untill we start using new stats
-#include <ooocore.h>
-#include <stats.h>
-
 #define INSIDE_DEFCORE
 #define DECLARE_STRUCTURES
 #include <defcore.h>
@@ -369,7 +365,7 @@ bool PhysicalRegisterFile::cleanup() {
         }
     }
 
-    per_ooo_core_stats_update(coreid, commit.free_regs_recycled += freed);
+    CORE_DEF_STATS(commit.free_reg_recycled) += freed;
     return (freed > 0);
 }
 
@@ -456,17 +452,14 @@ bool DefaultCore::runcycle() {
         thread->prev_interrupts_pending = current_interrupts_pending;
 
         if(thread->ctx.kernel_mode) {
-            thread->stats_ = &kernel_stats;
             thread->thread_stats.set_default_stats(n_kernel_stats);
         } else {
-            thread->stats_ = &user_stats;
             thread->thread_stats.set_default_stats(n_user_stats);
         }
     }
 
     // Each core's thread-shared stats counter will be added to
     // the thread-0's counters for simplicity
-    stats_ = threads[0]->stats_;
     core_stats.set_default_stats(threads[0]->thread_stats.get_default_stats(), false);
 
     //
@@ -555,8 +548,8 @@ bool DefaultCore::runcycle() {
             if(thread->handle_interrupt_at_next_eom) {
                 commitrc[tid] = COMMIT_RESULT_INTERRUPT;
                 if(thread->ctx.is_int_pending()) {
-                    per_context_ooocore_stats_update(thread->threadid,
-                            cycles_in_pause -= thread->pause_counter);
+                    thread->thread_stats.cycles_in_pause -=
+                        thread->pause_counter;
                     thread->pause_counter = 0;
                 }
             } else {
@@ -565,7 +558,6 @@ bool DefaultCore::runcycle() {
             continue;
         }
 
-        stats = thread->stats_;
         commitrc[tid] = thread->commit();
         for_each_cluster(j) thread->writeback(j);
         for_each_cluster(j) thread->transfer(j);
@@ -587,7 +579,6 @@ bool DefaultCore::runcycle() {
     foreach (permute, threadcount) {
         int tid = add_index_modulo(round_robin_tid, +permute, threadcount);
         ThreadContext* thread = threads[tid];
-        stats = thread->stats_;
         thread->tlbwalk();
     }
 
@@ -620,7 +611,6 @@ bool DefaultCore::runcycle() {
         ThreadContext* thread = threads[tid];
         if unlikely (!thread->ctx.running) continue;
 
-        stats = thread->stats_;
         for_each_cluster(j) { thread->complete(j); }
 
         dispatchrc[tid] = thread->dispatch();
@@ -651,7 +641,6 @@ bool DefaultCore::runcycle() {
         foreach (i, threadcount) {
             priority_index[i] = i;
             ThreadContext* thread = threads[i];
-            stats = thread->stats_;
             priority_value[i] = thread->get_priority();
             if unlikely (!thread->ctx.running) priority_value[i] = limits<int>::max;
         }
@@ -672,7 +661,6 @@ bool DefaultCore::runcycle() {
         int i = priority_index[j];
         ThreadContext* thread = threads[i];
         assert(thread);
-        stats = thread->stats_;
         fetch_exception[i] = true;
         if unlikely (!thread->ctx.running) {
             continue;
@@ -711,7 +699,6 @@ bool DefaultCore::runcycle() {
 
     foreach (i, threadcount) {
         ThreadContext* thread = threads[i];
-        stats = thread->stats_;
         if unlikely (!thread->ctx.running) continue;
         int rc = commitrc[i];
         if (logable(9)) {
@@ -848,14 +835,14 @@ bool DefaultCore::runcycle() {
         ThreadContext* thread = threads[i];
         if unlikely (!thread->ctx.running) break;
 
-        if unlikely ((sim_cycle - thread->last_commit_at_cycle) > 4*4096*threadcount) {
+        if unlikely ((sim_cycle - thread->last_commit_at_cycle) > 1024*1024*threadcount) {
             stringbuf sb;
             sb << "[vcpu ", thread->ctx.cpu_index, "] thread ", thread->threadid, ": WARNING: At cycle ",
                sim_cycle, ", ", total_user_insns_committed,  " user commits: no instructions have committed for ",
                (sim_cycle - thread->last_commit_at_cycle), " cycles; the pipeline could be deadlocked", endl;
             ptl_logfile << sb, flush;
             cerr << sb, flush;
-            dump_state(ptl_logfile);
+            machine.dump_state(ptl_logfile);
             ptl_logfile.flush();
             exiting = 1;
             assert(0);
@@ -1384,10 +1371,8 @@ bool ThreadContext::handle_interrupt() {
 
     // update the stats
     if(ctx.exit_request) {
-        per_context_ooocore_stats_update(threadid, cpu_exit_requests++);
         thread_stats.cpu_exit_requests++;
     } else {
-        per_context_ooocore_stats_update(threadid, interrupt_requests++);
         thread_stats.interrupt_requests++;
     }
     return true;
@@ -2031,6 +2016,7 @@ void DefaultCore::check_ctx_changes()
 {
     foreach(i, threadcount) {
         Context& ctx = threads[i]->ctx;
+        ctx.handle_interrupt = 0;
 
         if(logable(4))
             ptl_logfile << " Ctx[", ctx.cpu_index, "] eflags: ", (void*)ctx.eflags, endl;
@@ -2038,7 +2024,6 @@ void DefaultCore::check_ctx_changes()
             if(logable(5))
                 ptl_logfile << "Old_eip: ", (void*)(ctx.old_eip), " New_eip: " ,
                             (void*)(ctx.eip), endl;
-            ctx.handle_interrupt = 0;
 
             // IP address is changed, so flush the pipeline
             threads[i]->flush_pipeline();
@@ -2048,10 +2033,6 @@ void DefaultCore::check_ctx_changes()
 
 void DefaultCore::update_stats(PTLsimStats* stats)
 {
-    // this ipc is in fact for threads average, so if using smt, you might need to get per core ipc first.
-    global_stats.ooocore_context_total.issue.uipc = (double)global_stats.ooocore_context_total.issue.uops / (double)global_stats.ooocore_total.cycles;
-    global_stats.ooocore_context_total.commit.uipc = (double)global_stats.ooocore_context_total.commit.uops / (double)global_stats.ooocore_total.cycles;
-    global_stats.ooocore_context_total.commit.ipc = (double)global_stats.ooocore_context_total.commit.insns / (double)global_stats.ooocore_total.cycles;
 }
 
 DefaultCoreBuilder::DefaultCoreBuilder(const char* name)

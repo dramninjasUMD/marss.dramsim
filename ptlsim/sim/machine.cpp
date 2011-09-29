@@ -82,6 +82,8 @@ bool BaseMachine::init(PTLsimConfig& config)
         cores[i]->update_memory_hierarchy_ptr();
     }
 
+    init_qemu_io_events();
+
     return 1;
 }
 
@@ -144,6 +146,7 @@ int BaseMachine::run(PTLsimConfig& config)
             backup_and_reopen_logfile();
 
         memoryHierarchyPtr->clock();
+        clock_qemu_io_events();
 
         foreach (cur_core, cores.count()){
             BaseCore& core =* cores[cur_core];
@@ -158,8 +161,9 @@ int BaseMachine::run(PTLsimConfig& config)
         sim_cycle++;
         iterations++;
 
-        if unlikely (config.stop_at_user_insns <= total_user_insns_committed){
-            ptl_logfile << "Stopping simulation loop at specified limits (", iterations, " iterations, ", total_user_insns_committed, " commits)", endl;
+        if unlikely (config.stop_at_user_insns <= total_user_insns_committed ||
+                config.stop_at_cycle <= sim_cycle) {
+            ptl_logfile << "Stopping simulation loop at specified limits (", sim_cycle, " cycles, ", total_user_insns_committed, " commits)", endl;
             exiting = 1;
             break;
         }
@@ -214,6 +218,7 @@ void BaseMachine::update_stats(PTLsimStats* stats)
     // First add user and kernel stats to global stats
     global_stats += user_stats + kernel_stats;
 
+    n_global_stats->reset();
     *n_global_stats += *n_user_stats;
     *n_global_stats += *n_kernel_stats;
 

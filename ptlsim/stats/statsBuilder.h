@@ -230,7 +230,7 @@ class Statable {
  */
 class StatsBuilder {
     private:
-        static StatsBuilder _builder;
+        static StatsBuilder *_builder;
         Statable *rootNode;
         W64 stat_offset;
 
@@ -253,7 +253,9 @@ class StatsBuilder {
          */
         static StatsBuilder& get()
         {
-            return _builder;
+            if (!_builder)
+                _builder = new StatsBuilder();
+            return *_builder;
         }
 
         /**
@@ -594,6 +596,18 @@ class StatObj : public StatObjBase {
         inline T operator--() {
             assert(default_var);
             (*default_var)--;
+            return (*default_var);
+        }
+
+        /**
+         * @brief -= operator
+         *
+         * @param val Amount to decrent
+         *
+         * @return T& with updated value
+         */
+        inline T& operator -= (T& val) {
+            (*default_var) -= val;
             return (*default_var);
         }
 
@@ -1121,6 +1135,16 @@ class StatArray : public StatObjBase {
             }
 
             return os;
+        }
+
+        /**
+         * @brief Get size of this array
+         *
+         * @return size
+         */
+        int length() const
+        {
+            return size;
         }
 };
 

@@ -1404,7 +1404,7 @@ int AtomOp::writeback()
     }
 
     foreach (i, num_uops_used) {
-        if (uops[i].opcode == OP_mf && uops[i].eom) {
+        if (uops[i].opcode == OP_mf && (uops[i].eom || !uops[i].som)) {
             thread->flush_mem_locks();
             break;
         }
@@ -3287,21 +3287,6 @@ void AtomCore::dump_state(ostream& os)
 
 void AtomCore::update_stats(PTLsimStats* stats)
 {
-    Stats* st_t;
-    foreach(i, 3) {
-        st_t = (i == 0) ? n_user_stats : ((i == 1) ? n_kernel_stats : n_global_stats);
-
-        foreach(i, threadcount) {
-            W64 cycles = threads[i]->st_cycles(st_t);
-
-            threads[i]->st_commit.ipc(st_t) = threads[i]->st_commit.insns(st_t) /
-                (double)(cycles);
-            threads[i]->st_commit.atomop_pc(st_t) = threads[i]->st_commit.atomops(st_t) /
-                (double)(cycles);
-            threads[i]->st_commit.uipc(st_t) = threads[i]->st_commit.uops(st_t) /
-                (double)(cycles);
-        }
-    }
 }
 
 /**
@@ -3351,14 +3336,14 @@ void AtomCore::flush_shared_structs(W8 threadid)
 void AtomCore::check_ctx_changes()
 {
     foreach(i, threadcount) {
+        threads[i]->ctx.handle_interrupt = 0;
+
         if(threads[i]->ctx.eip != threads[i]->ctx.old_eip) {
             // IP Address has changed, so flush the pipeline
             ATOMCORELOG("Thread flush old_eip: ",
                     HEXADDR(threads[i]->ctx.old_eip), " new-eip: ",
                     HEXADDR(threads[i]->ctx.eip));
             threads[i]->flush_pipeline();
-
-            threads[i]->ctx.handle_interrupt = 0;
         }
     }
 }
