@@ -925,7 +925,7 @@ void DirectoryController::print(ostream &os) const
     os << "Queue:\n" << *pendingRequests_ << endl;
 }
 
-bool DirectoryController::is_full(bool flag) const
+bool DirectoryController::is_full(bool flag, MemoryRequest *request) const
 {
     if (pendingRequests_->count() >= (
                 pendingRequests_->size() - 10)) {
