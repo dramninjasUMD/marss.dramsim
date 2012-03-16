@@ -270,7 +270,7 @@ W64 l_assist_cli(Context& ctx, W64 ra, W64 rb, W64 rc, W16 raflags,
 
 bool assist_enter(Context& ctx) {
 
-    int ot, opsize, esp_addend, level;
+    int opsize, esp_addend, level;
     W64 tmp1;
 
     esp_addend = ctx.reg_ar1;
@@ -1024,9 +1024,101 @@ bool TraceDecoder::decode_complex() {
     break;
   }
 
-  case 0x6c ... 0x6f: {
-    // insb/insw/outsb/outsw: not supported
-    MakeInvalid();
+  case 0x6c:
+  case 0x6d: {
+    // ins/insb/insw/insd
+    EndOfDecode();
+
+    /* TODO: Check for previlages */
+
+    W64 rep = (prefixes & (PFX_REPNZ|PFX_REPZ));
+    int sizeshift = (op == 0x6c) ? 0 : (opsize_prefix ? 1 : 2);
+    int addrsizeshift = (use64 ? (addrsize_prefix ? 2 : 3) : (addrsize_prefix ? 1 : 2));
+
+    /* Generate a dummy store to check for page fault */
+    this << TransOp(OP_st, REG_mem, REG_rdi, REG_zero, REG_imm, 3, 0);
+
+    this << TransOp(OP_mov, REG_temp0, REG_zero, REG_imm, REG_zero, 0, sizeshift);
+    this << TransOp(OP_mov, REG_temp1, REG_zero, REG_imm, REG_zero, 0, 0);
+	TransOp ast(OP_ast, REG_temp1, REG_rdx, REG_temp0, REG_temp1, 3);
+	ast.riptaken = L_ASSIST_IOPORT_IN;
+	ast.nouserflags = 1;
+	this << ast;
+
+    this << TransOp(OP_st, REG_mem, REG_rdi, REG_zero, REG_temp1, sizeshift);
+
+    /* Increment or decrement RDI based on DFlag
+     * Dflag is either 1 or -1
+     * We shift dflag based on sizeshift to get 'inc' value
+     * Add 'inc' value to RDI */
+    TransOp ldp(OP_ld, REG_temp0, REG_ctx, REG_imm, REG_zero, 2,
+            offsetof_t(Context, df));
+    ldp.internal = 1;
+    this << ldp;
+    this << TransOp(OP_shl, REG_temp0, REG_temp0, REG_imm, REG_zero, addrsizeshift, sizeshift);
+    this << TransOp(OP_add, REG_rdi, REG_rdi, REG_temp0, REG_zero, addrsizeshift);
+
+    if (rep == PFX_REPZ) {
+      if (!last_flags_update_was_atomic) this << TransOp(OP_collcc, REG_temp5, REG_zf, REG_cf, REG_of, 3, 0, 0, FLAGS_DEFAULT_ALU);
+
+      TransOp sub(OP_sub,  REG_rcx,   REG_rcx,    REG_imm,   REG_zero, addrsizeshift, 1, 0, SETFLAG_ZF);
+      sub.nouserflags = 1; // it still generates flags, but does not rename the user flags
+      this << sub;
+      TransOp br(OP_br, REG_rip, REG_rcx, REG_zero, REG_zero, addrsizeshift);
+      br.cond = COND_ne; // repeat while nonzero
+      br.riptaken = (Waddr)ripstart;
+      br.ripseq = (Waddr)rip;
+      this << br;
+      end_of_block = 1;
+    }
+
+    break;
+  }
+
+  case 0x6e:
+  case 0x6f: {
+    // outs/outsb/outsw/outsd
+    EndOfDecode();
+
+    /* TODO: Check for previlages */
+
+    W64 rep = (prefixes & (PFX_REPNZ|PFX_REPZ));
+    int sizeshift = (op == 0x6e) ? 0 : (opsize_prefix ? 1 : 2);
+    int addrsizeshift = (use64 ? (addrsize_prefix ? 2 : 3) : (addrsize_prefix ? 1 : 2));
+
+    this << TransOp(OP_ld, REG_temp1, REG_rsi, REG_zero, REG_zero, sizeshift);
+
+    this << TransOp(OP_mov, REG_temp0, REG_zero, REG_imm, REG_zero, 0, sizeshift);
+	TransOp ast(OP_ast, REG_temp0, REG_rdx, REG_temp0, REG_temp1, 3);
+	ast.riptaken = L_ASSIST_IOPORT_OUT;
+	ast.nouserflags = 1;
+	this << ast;
+
+    /* Increment or decrement RSI based on DFlag
+     * Dflag is either 1 or -1
+     * We shift dflag based on sizeshift to get 'inc' value
+     * Add 'inc' value to RDI */
+    TransOp ldp(OP_ld, REG_temp0, REG_ctx, REG_imm, REG_zero, 2,
+            offsetof_t(Context, df));
+    ldp.internal = 1;
+    this << ldp;
+    this << TransOp(OP_shl, REG_temp0, REG_temp0, REG_imm, REG_zero, addrsizeshift, sizeshift);
+    this << TransOp(OP_add, REG_rsi, REG_rsi, REG_temp0, REG_zero, addrsizeshift);
+
+    if (rep == PFX_REPZ) {
+      if (!last_flags_update_was_atomic) this << TransOp(OP_collcc, REG_temp5, REG_zf, REG_cf, REG_of, 3, 0, 0, FLAGS_DEFAULT_ALU);
+
+      TransOp sub(OP_sub,  REG_rcx,   REG_rcx,    REG_imm,   REG_zero, addrsizeshift, 1, 0, SETFLAG_ZF);
+      sub.nouserflags = 1; // it still generates flags, but does not rename the user flags
+      this << sub;
+      TransOp br(OP_br, REG_rip, REG_rcx, REG_zero, REG_zero, addrsizeshift);
+      br.cond = COND_ne; // repeat while nonzero
+      br.riptaken = (Waddr)ripstart;
+      br.ripseq = (Waddr)rip;
+      this << br;
+      end_of_block = 1;
+    }
+
     break;
   }
 
@@ -1100,7 +1192,6 @@ bool TraceDecoder::decode_complex() {
       // ld t6 = [mem]
       //
       int destreg = arch_pseudo_reg_to_arch_reg[ra.reg.reg];
-      int mergewith = arch_pseudo_reg_to_arch_reg[ra.reg.reg];
       if (sizeshift >= 2) {
         // zero extend 32-bit to 64-bit or just load as 64-bit:
         operand_load(REG_temp0, rd);
@@ -1717,7 +1808,6 @@ bool TraceDecoder::decode_complex() {
 		break;
 	}
 
-	W32 offset;
 	int sizeshift;
 	if(addrsize_prefix) {
 		DECODE(iform, ra, d_mode);
@@ -1998,7 +2088,6 @@ bool TraceDecoder::decode_complex() {
 			if(!pe || vm86)
 				goto invalid_opcode;
 
-			int sizeshift = (modrm.mod == 3) ? 3 : 2;
 			DECODE(eform, rd, v_mode);
 			EndOfDecode();
 
@@ -2471,7 +2560,7 @@ bool TraceDecoder::decode_complex() {
     if (!kernel) { outcome = DECODE_OUTCOME_GP_FAULT; MakeInvalid(); }
     EndOfDecode();
 
-    int offset;
+    int offset = -1;
 
     switch (modrm.reg) {
     case 0: offset = offsetof_t(Context, cr[0]); break;
@@ -2509,8 +2598,6 @@ bool TraceDecoder::decode_complex() {
     if (!kernel) { outcome = DECODE_OUTCOME_GP_FAULT; MakeInvalid(); }
     EndOfDecode();
 
-    int offset;
-
     static const int index_to_assist[8] = {
       ASSIST_WRITE_CR0,
       ASSIST_INVALID_OPCODE,
@@ -2536,7 +2623,7 @@ bool TraceDecoder::decode_complex() {
     if (!kernel) { outcome = DECODE_OUTCOME_GP_FAULT; MakeInvalid(); }
     EndOfDecode();
 
-    int offset;
+    int offset = -1;
 
     switch (modrm.reg) {
     case 0: offset = offsetof_t(Context, dr[0]); break;
@@ -2666,7 +2753,6 @@ bool TraceDecoder::decode_complex() {
 
     if (rd.type == OPTYPE_REG) {
       int rdreg = arch_pseudo_reg_to_arch_reg[rd.reg.reg];
-      int rareg = arch_pseudo_reg_to_arch_reg[ra.reg.reg];
 
       // bt has no output - just flags:
       this << TransOp(opcode, (opcode == OP_bt) ? REG_temp0 : rdreg, rdreg, REG_imm, REG_zero, 3, ra.imm.imm, 0, SETFLAG_CF);

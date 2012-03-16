@@ -41,6 +41,39 @@ namespace OOO_CORE_MODEL {
     byte uop_executable_on_cluster[OP_MAX_OPCODE];
     W32 forward_at_cycle_lut[MAX_CLUSTERS][MAX_FORWARDING_LATENCY+1];
     bool globals_initialized = false;
+
+    const char* physreg_state_names[MAX_PHYSREG_STATE] = {"none", "free",
+        "waiting", "bypass", "written", "arch", "pendingfree"};
+    const char* short_physreg_state_names[MAX_PHYSREG_STATE] = {"-",
+        "free", "wait", "byps", "wrtn", "arch", "pend"};
+
+#ifdef MULTI_IQ
+    const char* cluster_names[MAX_CLUSTERS] = {"int0", "int1", "ld", "fp"};
+#else
+    const char* cluster_names[MAX_CLUSTERS] = {"all"};
+#endif
+
+    const char* phys_reg_file_names[PHYS_REG_FILE_COUNT] = {"int", "fp", "st", "br"};
+
+    const char* fu_names[FU_COUNT] = {
+        "ldu0",
+        "stu0",
+        "ldu1",
+        "stu1",
+        "ldu2",
+        "stu2",
+        "ldu3",
+        "stu4",
+        "alu0",
+        "fpu0",
+        "alu1",
+        "fpu1",
+        "alu2",
+        "fpu2",
+        "alu3",
+        "fpu3",
+    };
+
 };
 
 //
@@ -149,10 +182,10 @@ void ThreadContext::setupTLB() {
     foreach(i, CPU_TLB_SIZE) {
         W64 dtlb_addr = ctx.tlb_table[!ctx.kernel_mode][i].addr_read;
         W64 itlb_addr = ctx.tlb_table[!ctx.kernel_mode][i].addr_code;
-        if((dtlb_addr ) != -1) {
+        if(dtlb_addr != (W64)-1) {
             dtlb.insert(dtlb_addr);
         }
-        if((itlb_addr) != -1) {
+        if(itlb_addr != (W64)-1) {
             itlb.insert(itlb_addr);
         }
     }
@@ -708,7 +741,7 @@ bool OooCore::runcycle() {
         switch (rc) {
             case COMMIT_RESULT_SMC:
                 {
-                    if (logable(3)) ptl_logfile << "Potentially cross-modifying SMC detected: global flush required (cycle ", sim_cycle, ", ", total_user_insns_committed, " commits)", endl, flush;
+                    if (logable(3)) ptl_logfile << "Potentially cross-modifying SMC detected: global flush required (cycle ", sim_cycle, ", ", total_insns_committed, " commits)", endl, flush;
                     //
                     // DO NOT GLOBALLY FLUSH! It will cut off the other thread(s) in the
                     // middle of their currently committing x86 instruction, causing massive
@@ -730,7 +763,7 @@ bool OooCore::runcycle() {
                         ThreadContext* t = threads[i];
                         if unlikely (!t) continue;
                         if (logable(3)) {
-                            ptl_logfile << "  [vcpu ", i, "] current_basic_block = ", t->current_basic_block;  ": ";
+                            ptl_logfile << "  [vcpu " << i << "] current_basic_block = " << t->current_basic_block <<  ": ";
                             if (t->current_basic_block) ptl_logfile << t->current_basic_block->rip;
                             ptl_logfile << endl;
                         }
@@ -814,7 +847,7 @@ bool OooCore::runcycle() {
         if (logable(9)) {
             stringbuf sb;
             sb << "[vcpu ", thread->ctx.cpu_index, "] thread ", thread->threadid, ": WARNING: At cycle ",
-               sim_cycle, ", ", total_user_insns_committed,  " user commits: ",
+               sim_cycle, ", ", total_insns_committed,  " user commits: ",
                (sim_cycle - thread->last_commit_at_cycle), " cycles;", endl;
             ptl_logfile << sb, flush;
         }
@@ -824,10 +857,10 @@ bool OooCore::runcycle() {
         ThreadContext* thread = threads[i];
         if unlikely (!thread->ctx.running) break;
 
-        if unlikely ((sim_cycle - thread->last_commit_at_cycle) > 1024*1024*threadcount) {
+        if unlikely ((sim_cycle - thread->last_commit_at_cycle) > (W64)1024*1024*threadcount) {
             stringbuf sb;
             sb << "[vcpu ", thread->ctx.cpu_index, "] thread ", thread->threadid, ": WARNING: At cycle ",
-               sim_cycle, ", ", total_user_insns_committed,  " user commits: no instructions have committed for ",
+               sim_cycle, ", ", total_insns_committed,  " user commits: no instructions have committed for ",
                (sim_cycle - thread->last_commit_at_cycle), " cycles; the pipeline could be deadlocked", endl;
             ptl_logfile << sb, flush;
             cerr << sb, flush;
@@ -860,7 +893,6 @@ void ReorderBufferEntry::init(int idx) {
 // expected to be zero when allocating a new ROB entry.
 //
 void ReorderBufferEntry::reset() {
-    int latency, operand;
     // Deallocate ROB entry
     entry_valid = false;
     cycles_left = 0;
@@ -903,7 +935,6 @@ bool ReorderBufferEntry::ready_to_commit() const {
 }
 
 StateList& ReorderBufferEntry::get_ready_to_issue_list() {
-    OooCore& core = getcore();
     ThreadContext& thread = getthread();
     return
         isload(uop.opcode) ? thread.rob_ready_to_load_list[cluster] :
@@ -1202,7 +1233,7 @@ bool ThreadContext::handle_barrier() {
     if (logable(1)) {
         ptl_logfile << "[vcpu ", ctx.cpu_index, "] Barrier (#", assistid, " -> ", (void*)assist, " ", assist_name(assist), " called from ",
                     (RIPVirtPhys(ctx.reg_selfrip).update(ctx)), "; return to ", (void*)(Waddr)ctx.reg_nextrip,
-                    ") at ", sim_cycle, " cycles, ", total_user_insns_committed, " commits", endl, flush;
+                    ") at ", sim_cycle, " cycles, ", total_insns_committed, " commits", endl, flush;
     }
 
     if (logable(6)) ptl_logfile << "Calling assist function at ", (void*)assist, "...", endl, flush;
@@ -1243,7 +1274,7 @@ bool ThreadContext::handle_exception() {
 
     if (logable(4)) {
         ptl_logfile << "[vcpu ", ctx.cpu_index, "] Exception ", exception_name(ctx.exception), " called from rip ", (void*)(Waddr)ctx.eip,
-                    " at ", sim_cycle, " cycles, ", total_user_insns_committed, " commits", endl, flush;
+                    " at ", sim_cycle, " cycles, ", total_insns_committed, " commits", endl, flush;
     }
 
     //
@@ -1342,7 +1373,7 @@ bool ThreadContext::handle_interrupt() {
     if (logable(3)) ptl_logfile << " handle_interrupt, flush_pipeline.",endl;
 
     if (logable(6)) {
-        ptl_logfile << "[vcpu ", threadid, "] interrupts pending at ", sim_cycle, " cycles, ", total_user_insns_committed, " commits", endl, flush;
+        ptl_logfile << "[vcpu ", threadid, "] interrupts pending at ", sim_cycle, " cycles, ", total_insns_committed, " commits", endl, flush;
         ptl_logfile << "Context at interrupt:", endl;
         ptl_logfile << ctx;
         ptl_logfile.flush();

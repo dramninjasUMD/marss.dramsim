@@ -167,6 +167,131 @@ const assist_func_t assistid_to_func[ASSIST_COUNT] = {
     assist_pause,
 };
 
+const char* assist_names[ASSIST_COUNT] = {
+  // Forced assists based on decode context
+  "invalid_opcode",
+  "exec_page_fault",
+  "gp_fault",
+  "ud2a",
+  // Integer arithmetic
+  "div<byte>",
+  "div<W16>",
+  "div<W32>",
+  "div<W64>",
+  "idiv<byte>",
+  "idiv<W16>",
+  "idiv<W32>",
+  "idiv<W64>",
+  // x87
+  "x87_fprem",
+  "x87_fyl2xp1",
+  "x87_fsqrt",
+  "x87_fsincos",
+  "x87_frndint",
+  "x87_fscale",
+  "x87_fsin",
+  "x87_fcos",
+  "x87_fxam",
+  "x87_f2xm1",
+  "x87_fyl2x",
+  "x87_fptan",
+  "x87_fpatan",
+  "x87_fxtract",
+  "x87_fprem1",
+  "x87_fld80",
+  "x87_fstp80",
+  "x87_fsave",
+  "x87_frstor",
+  "x87_finit",
+  "x87_fclex",
+  "x87_fxch",
+  "x87_fnstenv",
+  "x87_fldenv",
+  "x87_fbstp",
+  "x87_fbld",
+  "x87_fnsave",
+  "x87_fldcw",
+  "mmx_emms",
+  // SSE save/restore
+  "ldmxcsr",
+  "fxsave",
+  "fxrstor",
+  // Interrupts", system calls", etc.
+  "int",
+  "syscall",
+  "sysret",
+  "hypercall",
+  "ptlcall",
+  "sysenter",
+  "iret16",
+  "iret32",
+  "iret64",
+  "sti",
+  "cli",
+  "enter",
+  // Control register updates
+  "cpuid",
+  "rdtsc",
+  "cld",
+  "std",
+  "pushf",
+  "popf",
+  "write_segreg",
+  "wrmsr",
+  "rdmsr",
+  "write_cr0",
+  "write_cr2",
+  "write_cr3",
+  "write_cr4",
+  "write_debug_reg",
+  // I/O and legacy
+  "ioport_in",
+  "ioport_out",
+  // Jumps
+  "ljmp",
+  "ljmp_prct",
+  // BCD
+  "bcd_aas",
+  // SVM
+  "svm_check",
+  // MONITOR
+  "monitor",
+  // MWAIT
+  "mwait",
+  // VM
+  "vmrun",
+  "vmcall",
+  "vmload",
+  "vmsave",
+  // STGI
+  "stgi",
+  // CLGI
+  "clgi",
+  // SKINIT
+  "skinit",
+  //INVLPGA
+  "invlpga",
+  "invlpg",
+  // LMSW
+  "lmsw",
+  // LLDT
+  "lldt",
+  // LTR
+  "ltr",
+  // VERR / VERW
+  "verr",
+  "verw",
+  // CLTS
+  "clts",
+  // SWAPGS
+  "swapgs",
+  // Barrier
+  "barrier",
+  // HLT
+  "halt",
+  "pause",
+};
+
 int assist_index(assist_func_t assist) {
     foreach (i, ASSIST_COUNT) {
         if (assistid_to_func[i] == assist) {
@@ -196,6 +321,17 @@ const light_assist_func_t light_assistid_to_func[L_ASSIST_COUNT] = {
     l_assist_ioport_out,
     l_assist_pause,
     l_assist_popcnt,
+};
+
+const char* light_assist_names[L_ASSIST_COUNT] = {
+	"l_sti",
+	"l_cli",
+	"l_pushf",
+	"l_popf",
+	"l_io_in",
+	"l_io_out",
+	"l_pause",
+    "l_popcnt"
 };
 
 int light_assist_index(light_assist_func_t assist) {
@@ -511,8 +647,6 @@ static const byte insn_is_simple[512] = {
     /*       0 1 2 3 4 5 6 7 8 9 a b c d e f        */
 };
 #undef _
-
-static int transop_histogram[MAX_TRANSOPS_PER_USER_INSN+1];
 
 void TraceDecoder::reset() {
     byteoffset = 0;
@@ -1514,16 +1648,16 @@ void TraceDecoder::split(bool after) {
 
 void print_invalid_insns(int op, const byte* ripstart, const byte* rip, int valid_byte_count, const PageFaultErrorCode& pfec, Waddr faultaddr) {
     if (pfec) {
-        if (logable(4)) ptl_logfile << "translate: page fault at iteration ", iterations, ", ", total_user_insns_committed, " commits: ",
+        if (logable(4)) ptl_logfile << "translate: page fault at iteration ", iterations, ", ", total_insns_committed, " commits: ",
             "ripstart ", ripstart, ", rip ", rip, ": required ", (rip - ripstart), " more bytes but only fetched ", valid_byte_count, " bytes; ",
                 "page fault error code: ", pfec, endl, flush;
     } else {
-        if (logable(4)) ptl_logfile << "translate: invalid opcode at iteration ", iterations, ": ", (void*)(Waddr)op, " commits ", total_user_insns_committed, " (at ripstart ", ripstart, ", rip ", rip, "); may be speculative", endl, flush;
+        if (logable(4)) ptl_logfile << "translate: invalid opcode at iteration ", iterations, ": ", (void*)(Waddr)op, " commits ", total_insns_committed, " (at ripstart ", ripstart, ", rip ", rip, "); may be speculative", endl, flush;
 #if 0
         if (!config.dumpcode_filename.empty()) {
             byte insnbuf[256];
             PageFaultErrorCode copypfec;
-            int valid_byte_count = contextof(0).copy_from_user(insnbuf, (Waddr)rip, sizeof(insnbuf), copypfec, faultaddr);
+            int valid_byte_count = contextof(0).copy_from_vm(insnbuf, (Waddr)rip, sizeof(insnbuf), copypfec, faultaddr);
             odstream os(config.dumpcode_filename);
             os.write(insnbuf, sizeof(insnbuf));
             os.close();
@@ -1549,8 +1683,7 @@ bool BasicBlockCache::invalidate(BasicBlock* bb, int reason) {
     }
 
     if unlikely (bbcache_dump_file) {
-        bbcache_dump_file.write(reinterpret_cast<char*>((BasicBlockBase*)bb), sizeof(BasicBlockBase));
-        bbcache_dump_file.write(reinterpret_cast<char*>(bb->transops), bb->count * sizeof(TransOp));
+        bbcache_dump_file << *bb << endl;
     }
 
     pagelist = bbpages.get(bb->rip.mfnlo);
@@ -1627,11 +1760,10 @@ bool BasicBlockCache::invalidate_page(Waddr mfn, int reason) {
 
     if unlikely (!pagelist) return 0;
 
-    int oldcount = pagelist->count();
     int n = 0;
     BasicBlockChunkList::Iterator iter(pagelist);
     BasicBlockPtr* entry;
-    while (entry = iter.next()) {
+    while ((entry = iter.next())) {
         BasicBlock* bb = *entry;
         if (logable(3) | log_code_page_ops) ptl_logfile << "  Invalidate bb ", bb, " (", bb->rip, ", ", bb->bytes, " bytes)", endl;
         if unlikely (!bbcache[cpuid].invalidate(bb, reason)) {
@@ -1662,7 +1794,7 @@ int BasicBlockCache::reclaim(size_t bytesreq, int urgency) {
 
     if (!count) return 0;
 
-    if (DEBUG) ptl_logfile << "Reclaiming cached basic blocks at ", sim_cycle, " cycles, ", total_user_insns_committed, " commits:", endl;
+    if (DEBUG) ptl_logfile << "Reclaiming cached basic blocks at ", sim_cycle, " cycles, ", total_insns_committed, " commits:", endl;
 
     if (DECODERSTAT)
         DECODERSTAT->reclaim_rounds++;
@@ -1677,7 +1809,7 @@ int BasicBlockCache::reclaim(size_t bytesreq, int urgency) {
     Iterator iter(this);
     BasicBlock* bb;
 
-    while (bb = iter.next()) {
+    while ((bb = iter.next())) {
         oldest = min(oldest, bb->lastused);
         newest = max(newest, bb->lastused);
         average += bb->lastused;
@@ -1714,7 +1846,7 @@ int BasicBlockCache::reclaim(size_t bytesreq, int urgency) {
     int reclaimed_objs = 0;
 
     iter.reset(this);
-    while (bb = iter.next()) {
+    while ((bb = iter.next())) {
         if unlikely (bb->refcount) {
             //
             // We cannot invalidate anything that's still in the pipeline.
@@ -1752,7 +1884,7 @@ int BasicBlockCache::reclaim(size_t bytesreq, int urgency) {
         int pages_freed = 0;
 
         if (DEBUG) ptl_logfile << "Scanning ", bbpages.count, " code pages:", endl;
-        while (page = iter.next()) {
+        while ((page = iter.next())) {
             if (page->empty()) {
                 if (!page->refcount) {
                     if (DEBUG) ptl_logfile << "  mfn ", page->mfn, " has no entries; freeing", endl;
@@ -1777,10 +1909,9 @@ int BasicBlockCache::reclaim(size_t bytesreq, int urgency) {
 // references are allowed.
 //
 void BasicBlockCache::flush(int8_t context_id) {
-    bool DEBUG = 1;
 
     if (logable(1))
-        ptl_logfile << "Flushing basic block cache at ", sim_cycle, " cycles, ", total_user_insns_committed, " commits:", endl;
+        ptl_logfile << "Flushing basic block cache at ", sim_cycle, " cycles, ", total_insns_committed, " commits:", endl;
 
     if (DECODERSTAT)
         DECODERSTAT->reclaim_rounds++;
@@ -1788,7 +1919,7 @@ void BasicBlockCache::flush(int8_t context_id) {
     {
         Iterator iter(this);
         BasicBlock* bb;
-        while (bb = iter.next()) {
+        while ((bb = iter.next())) {
             // if(bb->context_id == context_id || context_id == -1)
             invalidate(bb, INVALIDATE_REASON_RECLAIM);
         }
@@ -1801,9 +1932,8 @@ void BasicBlockCache::flush(int8_t context_id) {
     {
         BasicBlockPageCache::Iterator iter(&bbpages);
         BasicBlockChunkList* page;
-        int pages_freed = 0;
 
-        while (page = iter.next()) {
+        while ((page = iter.next())) {
             //assert(page->empty());
             if(page->empty()) {
                 bbpages.remove(page);
@@ -1840,7 +1970,7 @@ bool assist_gp_fault(Context& ctx) {
 }
 
 bool TraceDecoder::invalidate() {
-    if likely ((rip - bb.rip) > valid_byte_count) {
+    if likely ((rip - bb.rip) > (W64)valid_byte_count) {
         //    // NOTE: contextof(0) is for debugging purposes only
         //    Level1PTE pte = contextof(0).virt_to_pte(ripstart);
         //    mfn_t mfn = (pte.p) ? pte.mfn : RIPVirtPhys::INVALID;
@@ -1995,7 +2125,7 @@ int TraceDecoder::fillbuf(Context& ctx, byte* insnbytes, int insnbytes_bufsize) 
     faultaddr = 0;
     pfec = 0;
     invalid = 0;
-    valid_byte_count = ctx.copy_from_user(insnbytes, bb.rip, insnbytes_bufsize, pfec, faultaddr, true);
+    valid_byte_count = ctx.copy_from_vm(insnbytes, bb.rip, insnbytes_bufsize, pfec, faultaddr, true);
     return valid_byte_count;
 }
 
@@ -2010,6 +2140,7 @@ int TraceDecoder::fillbuf_phys_prechecked(byte* insnbytes, int insnbytes_bufsize
     //  this->ptehi = ptehi;
     //  valid_byte_count = copy_from_user_phys_prechecked(insnbytes, bb.rip, insnbytes_bufsize, faultaddr);
     //  return valid_byte_count;
+    return -1;
 }
 
 //
@@ -2070,7 +2201,7 @@ bool TraceDecoder::translate() {
     is_sse = 0;
     is_mmx = 0;
 
-    invalid |= ((rip - (Waddr)bb.rip) > valid_byte_count);
+    invalid |= ((rip - (Waddr)bb.rip) > (W64)valid_byte_count);
 
     if (invalid) {
         if(logable(5))
@@ -2132,9 +2263,9 @@ bool TraceDecoder::translate() {
     } else {
         // Block did not end with a branch: do we have more room for another x86 insn?
         if (// ((MAX_BB_UOPS - bb.count) < (MAX_TRANSOPS_PER_USER_INSN-2)) ||
-                ((rip - bb.rip) >= (insnbytes_bufsize-15)) ||
-                ((rip - bb.rip) >= valid_byte_count) ||
-                (user_insn_count >= MAX_BB_X86_INSNS) ||
+                ((rip - bb.rip) >= (W64)(insnbytes_bufsize-15)) ||
+                ((rip - bb.rip) >= (W64)valid_byte_count) ||
+                (user_insn_count >= (W16)MAX_BB_X86_INSNS) ||
                 (rip == stop_at_rip)) {
             if (logable(5)) ptl_logfile << "Basic block ", (void*)(Waddr)bb.rip, " too long: cutting at ", bb.count, " transops (", transbufcount, " currently in buffer)", endl;
             // bb.rip_taken and bb.rip_not_taken were already filled out for the last instruction.
@@ -2207,9 +2338,9 @@ BasicBlock* BasicBlockCache::translate(Context& ctx, const RIPVirtPhys& rvp) {
     }
 
     if (logable(10) | log_code_page_ops) {
-        ptl_logfile << "Translating ", rvp, " (", trans.valid_byte_count, " bytes valid) at ", sim_cycle, " cycles, ", total_user_insns_committed, " commits", endl;
+        ptl_logfile << "Translating ", rvp, " (", trans.valid_byte_count, " bytes valid) at ", sim_cycle, " cycles, ", total_insns_committed, " commits", endl;
         ptl_logfile << "Instruction Buffer: 64[", trans.use64, "] \n";
-        foreach(i, sizeof(insnbuf)) {
+        foreach(i, (int)sizeof(insnbuf)) {
             ptl_logfile << hexstring(insnbuf[i], 8), " ";
         }
         ptl_logfile << endl << superstl::flush;
@@ -2325,7 +2456,7 @@ void BasicBlockCache::translate_in_place(BasicBlock& targetbb, Context& ctx, Wad
     trans.fillbuf(ctx, insnbuf, sizeof(insnbuf));
 
     if (logable(5) | log_code_page_ops) {
-        ptl_logfile << "Translating ", rvp, " (", trans.valid_byte_count, " bytes valid) at ", sim_cycle, " cycles, ", total_user_insns_committed, " commits", endl;
+        ptl_logfile << "Translating ", rvp, " (", trans.valid_byte_count, " bytes valid) at ", sim_cycle, " cycles, ", total_insns_committed, " commits", endl;
     }
 
     for (;;) {
@@ -2360,7 +2491,7 @@ BasicBlock* BasicBlockCache::translate_and_clone(Context& ctx, Waddr rip) {
     trans.fillbuf(ctx, insnbuf, sizeof(insnbuf));
 
     if (logable(5) | log_code_page_ops) {
-        ptl_logfile << "Translating ", rvp, " (", trans.valid_byte_count, " bytes valid) at ", sim_cycle, " cycles, ", total_user_insns_committed, " commits", endl;
+        ptl_logfile << "Translating ", rvp, " (", trans.valid_byte_count, " bytes valid) at ", sim_cycle, " cycles, ", total_insns_committed, " commits", endl;
     }
 
     for (;;) {
@@ -2378,8 +2509,6 @@ ostream& BasicBlockCache::print(ostream& os) {
 
     foreach (i, bblist.length) {
         const BasicBlock& bb = *bblist[i];
-        double percent_of_total_uops = ((double)(bb.hitcount * bb.tagcount) / (double)total_uops_committed);
-        double percent_of_total_bbs = ((double)(bb.hitcount) / (double)total_basic_blocks_committed);
 
         os << "  ", bb.rip, ": ",
            intstring(bb.tagcount, 4), "t ", intstring(bb.memcount - bb.storecount, 3), "ld ",
@@ -2392,7 +2521,7 @@ ostream& BasicBlockCache::print(ostream& os) {
         os << endl;
     }
 
-    delete& bblist;
+    bblist.clear_and_free();
     return os;
 }
 
@@ -2416,7 +2545,7 @@ void dump_bbcache_to_logfile() {
     foreach(i, NUM_SIM_CORES) {
         BasicBlockCache::Iterator iter(&bbcache[i]);
         BasicBlock* bb;
-        while (bb = iter.next()) {
+        while ((bb = iter.next())) {
             ptl_logfile << "BasicBlock: ", *bb, endl;
         }
         ptl_logfile << flush;
