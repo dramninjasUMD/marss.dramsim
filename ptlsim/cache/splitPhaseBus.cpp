@@ -60,7 +60,16 @@ BusInterconnect::BusInterconnect(const char *name,
     SET_SIGNAL_CB(name, "_Data_Broadcast_Complete", dataBroadcastCompleted_,
             &BusInterconnect::data_broadcast_completed_cb);
 
-    new_stats->set_default_stats(global_stats);
+    new_stats->set_default_stats(user_stats);
+
+    if(!memoryHierarchy_->get_machine().get_option(name, "latency", latency_)) {
+        latency_ = BUS_BROADCASTS_DELAY;
+    }
+
+    if(!memoryHierarchy_->get_machine().get_option(name, "arbitrate_latency",
+                arbitrate_latency_)) {
+        arbitrate_latency_ = BUS_ARBITRATE_DELAY;
+    }
 }
 
 BusInterconnect::~BusInterconnect()
@@ -123,6 +132,8 @@ bool BusInterconnect::controller_request_cb(void *arg)
 
     memdebug("Bus received message: ", *message, endl);
 
+    bool kernel = message->request->is_kernel();
+
     /*
      * check if the request is already in pendingRequests_ queue
      * then update the hasData array in that queue
@@ -177,7 +188,7 @@ bool BusInterconnect::controller_request_cb(void *arg)
                             pendingEntry);
                 }
             } else {
-                new_stats->bus_not_ready++;
+                N_STAT_UPDATE(new_stats->bus_not_ready, ++, kernel);
             }
 
             return true;
@@ -195,7 +206,7 @@ bool BusInterconnect::controller_request_cb(void *arg)
     }
 
     if (busControllerQueue->queue.isFull()) {
-        new_stats->bus_not_ready++;
+        N_STAT_UPDATE(new_stats->bus_not_ready, ++, kernel);
         memdebug("Bus queue is full\n");
         return false;
     }
@@ -215,7 +226,7 @@ bool BusInterconnect::controller_request_cb(void *arg)
         memoryHierarchy_->add_event(&broadcast_, 1, NULL);
         set_bus_busy(true);
     } else {
-        new_stats->bus_not_ready++;
+        N_STAT_UPDATE(new_stats->bus_not_ready, ++, kernel);
         memdebug("Bus is busy\n");
     }
 
@@ -268,8 +279,11 @@ bool BusInterconnect::broadcast_cb(void *arg)
     BusQueueEntry *queueEntry;
     if(arg != NULL)
         queueEntry = (BusQueueEntry*)arg;
-    else
+    else {
         queueEntry = arbitrate_round_robin();
+        memoryHierarchy_->add_event(&broadcast_, arbitrate_latency_, queueEntry);
+        return true;
+    }
 
     if(queueEntry == NULL || queueEntry->annuled) { // nothing to broadcast
         set_bus_busy(false);
@@ -284,7 +298,7 @@ bool BusInterconnect::broadcast_cb(void *arg)
             queueEntry->request->get_type() != MEMORY_OP_UPDATE) {
         memdebug("Bus cant do addr broadcast, pending queue full\n");
         memoryHierarchy_->add_event(&broadcast_,
-                BUS_BROADCASTS_DELAY, queueEntry);
+                latency_, queueEntry);
         return true;
     }
 
@@ -298,14 +312,14 @@ bool BusInterconnect::broadcast_cb(void *arg)
         memdebug("Bus cant do addr broadcast\n");
         set_bus_busy(true);
         memoryHierarchy_->add_event(&broadcast_,
-                BUS_BROADCASTS_DELAY, queueEntry);
+                latency_, queueEntry);
         return true;
     }
 
     set_bus_busy(true);
 
     memoryHierarchy_->add_event(&broadcastCompleted_,
-            BUS_BROADCASTS_DELAY, queueEntry);
+            latency_, queueEntry);
 
     return true;
 }
@@ -360,6 +374,8 @@ bool BusInterconnect::broadcast_completed_cb(void *arg)
         }
     }
 
+    bool kernel = queueEntry->request->is_kernel();
+
     /* Free the entry from queue */
     queueEntry->request->decRefCounter();
     if(!queueEntry->annuled) {
@@ -370,18 +386,19 @@ bool BusInterconnect::broadcast_completed_cb(void *arg)
     }
 
     /* Update bus stats */
-    new_stats->addr_bus_cycles += BUS_BROADCASTS_DELAY;
+    N_STAT_UPDATE(new_stats->addr_bus_cycles, += latency_,
+            kernel);
     if(pendingEntry) {
         switch(pendingEntry->request->get_type()) {
-            case MEMORY_OP_READ: new_stats->broadcasts.read++;
+            case MEMORY_OP_READ: N_STAT_UPDATE(new_stats->broadcasts.read, ++, kernel);
                                  break;
-            case MEMORY_OP_WRITE: new_stats->broadcasts.write++;
+            case MEMORY_OP_WRITE: N_STAT_UPDATE(new_stats->broadcasts.write, ++, kernel);
                                   break;
             default: assert(0);
         }
     } else { // On memory update we don't use any pending entry
-        new_stats->broadcasts.update++;
-        new_stats->broadcast_cycles.update++;
+        N_STAT_UPDATE(new_stats->broadcasts.update, ++, kernel);
+        N_STAT_UPDATE(new_stats->broadcast_cycles.update, ++, kernel);
     }
 
     /* Free the message */
@@ -436,7 +453,7 @@ bool BusInterconnect::data_broadcast_cb(void *arg)
      */
     if(!can_broadcast(pendingEntry->controllerQueue, pendingEntry->request)) {
         memoryHierarchy_->add_event(&dataBroadcast_,
-                BUS_BROADCASTS_DELAY, arg);
+                latency_, arg);
         return true;
     }
 
@@ -446,7 +463,7 @@ bool BusInterconnect::data_broadcast_cb(void *arg)
     }
 
     memoryHierarchy_->add_event(&dataBroadcastCompleted_,
-            BUS_BROADCASTS_DELAY, pendingEntry);
+            latency_, pendingEntry);
 
     return true;
 }
@@ -480,13 +497,15 @@ bool BusInterconnect::data_broadcast_completed_cb(void *arg)
     }
 
     /* Update bus stats */
-    new_stats->data_bus_cycles += BUS_BROADCASTS_DELAY;
+    bool kernel = pendingEntry->request->is_kernel();
+
+    N_STAT_UPDATE(new_stats->data_bus_cycles, += latency_, kernel);
     W64 delay = sim_cycle - pendingEntry->initCycle;
-    assert(delay > BUS_BROADCASTS_DELAY);
+    assert(delay > latency_);
     switch(pendingEntry->request->get_type()) {
-        case MEMORY_OP_READ: new_stats->broadcast_cycles.read += delay;
+        case MEMORY_OP_READ: N_STAT_UPDATE(new_stats->broadcast_cycles.read, += delay, kernel);
                              break;
-        case MEMORY_OP_WRITE: new_stats->broadcast_cycles.write += delay;
+        case MEMORY_OP_WRITE: N_STAT_UPDATE(new_stats->broadcast_cycles.write, += delay, kernel);
                               break;
         default: assert(0);
     }

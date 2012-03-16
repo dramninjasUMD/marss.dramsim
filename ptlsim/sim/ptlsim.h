@@ -55,7 +55,11 @@ struct PTLsimMachine : public Statable {
   bool stopped;
   bool first_run;
   Context* ret_qemu_env;
-  PTLsimMachine() : Statable("machine") { initialized = 0; stopped = 0;}
+  PTLsimMachine() : Statable("machine") {
+      initialized = 0; stopped = 0;
+      handle_cpuid = NULL;
+  }
+
   virtual bool init(PTLsimConfig& config);
   virtual int run(PTLsimConfig& config);
   virtual void update_stats();
@@ -72,6 +76,8 @@ struct PTLsimMachine : public Statable {
   static PTLsimMachine* getcurrent();
 
   stringbuf machine_name;
+  int (*handle_cpuid)(uint32_t index, uint32_t count, uint32_t *eax,
+          uint32_t *ebx, uint32_t *ecx, uint32_t *edx);
 
   Context& contextof(W8 i) {
 	  return *ptl_contexts[i];
@@ -274,6 +280,9 @@ struct PTLsimConfig {
 
   //Utilities/Tools
   stringbuf execute_after_kill;
+
+  // Sync Options
+  W64  sync_interval;
 
   void reset();
 };
