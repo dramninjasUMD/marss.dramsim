@@ -36,13 +36,21 @@
 #include <memoryController.h>
 #include <memoryHierarchy.h>
 
+#include <machine.h>
+
 using namespace Memory;
-MemoryController::MemoryController(W8 coreid, char *name,
+
+MemoryController::MemoryController(W8 coreid, const char *name,
 		MemoryHierarchy *memoryHierarchy) :
 	Controller(coreid, name, memoryHierarchy)
+    , new_stats(name, &memoryHierarchy->get_machine())
 {
+    memoryHierarchy_->add_cache_mem_controller(this);
+
+    if(!memoryHierarchy_->get_machine().get_option(name, "latency", latency_)) {
+        latency_ = 50;
+    }
 #ifdef DRAMSIM
-//	mem = new MemorySystem(0, "ini/DDR3_micron_64M_8B_x4_sg15.ini", "system.ini", "../DRAMSim2", "MARSS"); /* this will NOT work */
 
 	extern uint64_t qemu_ram_size;
 	mem = DRAMSim::getMemorySystemInstance(0, "ini/DDR3_micron_8M_8B_x16_sg15.ini", "system.ini", "../DRAMSim2", "MARSS", qemu_ram_size>>20 ); 
@@ -53,6 +61,9 @@ MemoryController::MemoryController(W8 coreid, char *name,
 	mem->RegisterCallbacks(read_cb, write_cb, NULL);
 
 #endif
+
+    /* Convert latency from ns to cycles */
+    latency_ = ns_to_simcycles(latency_);
 
     SET_SIGNAL_CB(name, "_Access_Completed", accessCompleted_,
             &MemoryController::access_completed_cb);
@@ -70,6 +81,18 @@ MemoryController::MemoryController(W8 coreid, char *name,
 int MemoryController::get_bank_id(W64 addr)
 {
 	return lowbits(addr >> 16, bankBits_);
+}
+
+void MemoryController::register_interconnect(Interconnect *interconnect,
+        int type)
+{
+    switch(type) {
+        case INTERCONN_TYPE_UPPER:
+            cacheInterconnect_ = interconnect;
+            break;
+        default:
+            assert(0);
+    }
 }
 
 void MemoryController::register_cache_interconnect(
@@ -94,6 +117,11 @@ bool MemoryController::handle_interconnect_cb(void *arg)
 	if(message->hasData && message->request->get_type() !=
 			MEMORY_OP_UPDATE)
 		return true;
+
+    if (message->request->get_type() == MEMORY_OP_EVICT) {
+        /* We ignore all the evict messages */
+        return true;
+    }
 
 	/*
 	 * if this request is a memory update request then
@@ -134,7 +162,7 @@ bool MemoryController::handle_interconnect_cb(void *arg)
 	MemoryQueueEntry *queueEntry = pendingRequests_.alloc();
 
 	/* if queue is full return false to indicate failure */
-	if(queueEntry == null) {
+	if(queueEntry == NULL) {
 		memdebug("Memory queue is full\n");
 		return false;
 	}
@@ -144,6 +172,7 @@ bool MemoryController::handle_interconnect_cb(void *arg)
 	}
 
 	queueEntry->request = message->request;
+	queueEntry->source = (Controller*)message->origin;
 
 	queueEntry->request->incRefCounter();
 	ADD_HISTORY_ADD(queueEntry->request);
@@ -156,9 +185,8 @@ bool MemoryController::handle_interconnect_cb(void *arg)
 	if(banksUsed_[bank_no] == 0) {
 		banksUsed_[bank_no] = 1;
 		queueEntry->inUse = true;
-
 #ifndef DRAMSIM
-		memoryHierarchy_->add_event(&accessCompleted_, MEM_LATENCY,
+		memoryHierarchy_->add_event(&accessCompleted_, latency_,
 				queueEntry);
 #endif
 	}
@@ -240,10 +268,25 @@ void MemoryController::read_return_cb(uint id, uint64_t addr, uint64_t cycle)
 bool MemoryController::access_completed_cb(void *arg)
 {
     MemoryQueueEntry *queueEntry = (MemoryQueueEntry*)arg;
+    bool kernel = queueEntry->request->is_kernel();
+
 #ifndef DRAMSIM
     int bank_no = get_bank_id(queueEntry->request->
             get_physical_address());
     banksUsed_[bank_no] = 0;
+
+    N_STAT_UPDATE(new_stats.bank_access, [bank_no]++, kernel);
+    switch(queueEntry->request->get_type()) {
+        case MEMORY_OP_READ:
+            N_STAT_UPDATE(new_stats.bank_read, [bank_no]++, kernel);
+            break;
+        case MEMORY_OP_WRITE:
+            N_STAT_UPDATE(new_stats.bank_write, [bank_no]++, kernel);
+            break;
+        case MEMORY_OP_UPDATE:
+            N_STAT_UPDATE(new_stats.bank_update, [bank_no]++, kernel);
+            break;
+    }
 
     /*
      * Now check if we still have pending requests
@@ -257,7 +300,7 @@ bool MemoryController::access_completed_cb(void *arg)
         if(bank_no == bank_no_2 && entry->inUse == false) {
             entry->inUse = true;
             memoryHierarchy_->add_event(&accessCompleted_,
-                    MEM_LATENCY, entry);
+                    latency_, entry);
             banksUsed_[bank_no] = 1;
             break;
         }
@@ -299,6 +342,7 @@ bool MemoryController::wait_interconnect_cb(void *arg)
 	/* First send response of the current request */
 	Message& message = *memoryHierarchy_->get_message();
 	message.sender = this;
+	message.dest = queueEntry->source;
 	message.request = queueEntry->request;
 	message.hasData = true;
 
@@ -328,7 +372,7 @@ void MemoryController::annul_request(MemoryRequest *request)
     MemoryQueueEntry *queueEntry;
     foreach_list_mutable(pendingRequests_.list(), queueEntry,
             entry, nextentry) {
-        if(queueEntry->request == request) {
+        if(queueEntry->request->is_same(request)) {
             queueEntry->annuled = true;
             if(!queueEntry->inUse) {
                 queueEntry->request->decRefCounter();
@@ -351,3 +395,17 @@ int MemoryController::get_no_pending_request(W8 coreid)
 	return count;
 }
 
+/* Memory Controller Builder */
+struct MemoryControllerBuilder : public ControllerBuilder
+{
+    MemoryControllerBuilder(const char* name) :
+        ControllerBuilder(name)
+    {}
+
+    Controller* get_new_controller(W8 coreid, W8 type,
+            MemoryHierarchy& mem, const char *name) {
+        return new MemoryController(coreid, name, &mem);
+    }
+};
+
+MemoryControllerBuilder memControllerBuilder("simple_dram_cont");
