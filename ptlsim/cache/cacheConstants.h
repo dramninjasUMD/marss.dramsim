@@ -45,21 +45,20 @@ namespace Memory{
 	const int CPU_CONT_ICACHE_BUF_SIZE = 32;
 
 	// L1D                 // increase to 32 KB to match Core 2
-	const int L1D_LINE_SIZE = 16;
-	const int L1D_SET_COUNT = 2048;
-	const int L1D_WAY_COUNT = 2;
-	const int L1D_DCACHE_BANKS = 8; // 8 banks x 8 bytes/bank = 64 bytes/line
+	const int L1D_LINE_SIZE = 64;
+	const int L1D_SET_COUNT = 256;
+	const int L1D_WAY_COUNT = 8;
 	const int L1D_LATENCY   = 2;
     //	const int L1D_REQ_NUM = 8;
 	const int L1D_READ_PORT = 2;
-	const int L1D_WRITE_PORT = 3;
+	const int L1D_WRITE_PORT = 1;
     //	const int L1D_WB_COUNT = L1D_REQ_NUM; // writeback buffer size
     //	const int L1D_SNOOP_PORT = 2;
 
 	// 128 KB L1I
-	const int L1I_LINE_SIZE = 16;
-	const int L1I_SET_COUNT = 2048;
-	const int L1I_WAY_COUNT = 2;
+	const int L1I_LINE_SIZE = 64;
+	const int L1I_SET_COUNT = 256;
+	const int L1I_WAY_COUNT = 8;
 	const int L1I_LATENCY   = 2;
     //	const int L1I_REQ_NUM = 8;
 	const int L1I_READ_PORT = 2;
@@ -72,7 +71,7 @@ namespace Memory{
 	// 4MB L2
 	//const int L2_SET_COUNT = 4096;
 	// 512 KB
-	const int L2_SET_COUNT = 1024;
+	const int L2_SET_COUNT = 4096;
 	const int L2_WAY_COUNT = 8;
 	//  const int L2_DCACHE_BANKS = 8; // 8 banks x 8 bytes/bank = 64 bytes/line
 	const int L2_LATENCY   = 5;
