@@ -197,8 +197,15 @@ bool MemoryController::handle_interconnect_cb(void *arg)
 	// FIXME: in the future there should be some mechanism to check that the size
 	// 	of a transaction and maybe make sure it matches the LLC line size
 	physicalAddress = ALIGN_ADDRESS(physicalAddress, dramsim_transaction_size); 
+    
+    /* This fixes issue #9: since we assume a write-allocate policy for MARSS,
+     * a MEMORY_OP_WRITE which corresponds to a write miss should be treated as
+     * a read operation in DRAMSim2. Once the line is brought into the cache it
+     * will be modified. Therefore, data writebacks will only happen on an
+     * MEMORY_OP_UPDATE operation when a dirty line is evicted from the cache. 
+     */
 
-	bool isWrite = memRequest->get_type() == MEMORY_OP_WRITE || memRequest->get_type() == MEMORY_OP_UPDATE;
+	bool isWrite = memRequest->get_type() == MEMORY_OP_UPDATE;
 	bool accepted = mem->addTransaction(isWrite,physicalAddress);
 	queueEntry->inUse = true;
 	assert(accepted);
