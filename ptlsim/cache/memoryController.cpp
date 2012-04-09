@@ -206,10 +206,17 @@ bool MemoryController::handle_interconnect_cb(void *arg)
      * MEMORY_OP_UPDATE operation when a dirty line is evicted from the cache. 
      */
 
-	bool isWrite = memRequest->get_type() == MEMORY_OP_UPDATE;
-	bool accepted = mem->addTransaction(isWrite,physicalAddress);
-	queueEntry->inUse = true;
-	assert(accepted);
+    bool isWrite = memRequest->get_type() == MEMORY_OP_UPDATE;
+    bool accepted = mem->addTransaction(isWrite,physicalAddress);
+    queueEntry->inUse = true;
+    assert(accepted);
+    if (!accepted) {
+        queueEntry->request->decRefCounter();
+        //XXX: hack alert -- shouldn't be allocating this entry in the first place if the transaction won't be accepted
+        pendingRequests_.free(queueEntry); 
+        //ptl_logfile << "###### DRAMSIM REJECTING "<< *(queueEntry->request)<<endl; 
+    }
+
 #endif
 
 	return true;
