@@ -35,7 +35,7 @@
 
 #ifdef DRAMSIM
 #include <DRAMSim.h>
-using DRAMSim::MemorySystem;
+using DRAMSim::MultiChannelMemorySystem;
 static const unsigned dramsim_transaction_size = 64;
 #endif
 
@@ -95,7 +95,7 @@ class MemoryController : public Controller
 #define ALIGN_ADDRESS(addr, bytes) (addr & ~(((unsigned long)bytes) - 1L))
 		void read_return_cb(uint, uint64_t, uint64_t);
 		void write_return_cb(uint, uint64_t, uint64_t);
-		MemorySystem *mem;
+		MultiChannelMemorySystem *mem;
 #endif
 		bool handle_request_cb(void *arg);
 		bool handle_interconnect_cb(void *arg);
@@ -116,7 +116,14 @@ class MemoryController : public Controller
 		bool is_full(bool fromInterconnect = false, MemoryRequest *request = NULL) const {
 			bool dramsimIsFull = false; 
 #ifdef DRAMSIM
-			dramsimIsFull = !mem->WillAcceptTransaction();
+            if (request)
+            {
+    			dramsimIsFull = !mem->willAcceptTransaction(request->get_physical_address());
+            }
+            else
+            {
+    			dramsimIsFull = !mem->willAcceptTransaction();
+            }
 #endif
 			return pendingRequests_.isFull() || dramsimIsFull;
 		}
