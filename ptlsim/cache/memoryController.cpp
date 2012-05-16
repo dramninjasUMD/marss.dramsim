@@ -54,7 +54,11 @@ MemoryController::MemoryController(W8 coreid, const char *name,
 
     //TODO: make the pwd argument settable by a simconfig option or maybe even by a #define in scons? 
 	extern uint64_t qemu_ram_size;
-	mem = DRAMSim::getMemorySystemInstance("ini/DDR3_micron_8M_8B_x16_sg15.ini", "system.ini", "../DRAMSim2", "MARSS", qemu_ram_size>>20 ); 
+    mem = DRAMSim::getMemorySystemInstance(config.dramsim_device_ini_file.buf,
+            config.dramsim_system_ini_file.buf, config.dramsim_pwd.buf,
+            config.dramsim_results_dir_name.buf, qemu_ram_size>>20 ); 
+
+    mem->setCPUClockSpeed(config.core_freq_hz); 
 
 	typedef DRAMSim::Callback <Memory::MemoryController, void, uint, uint64_t, uint64_t> dramsim_callback_t;
 	DRAMSim::TransactionCompleteCB *read_cb = new dramsim_callback_t(this, &MemoryController::read_return_cb);
@@ -209,14 +213,14 @@ bool MemoryController::handle_interconnect_cb(void *arg)
     bool isWrite = memRequest->get_type() == MEMORY_OP_UPDATE;
     bool accepted = mem->addTransaction(isWrite,physicalAddress);
     queueEntry->inUse = true;
-    assert(accepted);
+    // the interconnect should have called mem->WillAcceptTransaction() via can_broadcast() before we got here, so this should always succeed
     if (!accepted) {
         queueEntry->request->decRefCounter();
         //XXX: hack alert -- shouldn't be allocating this entry in the first place if the transaction won't be accepted
         pendingRequests_.free(queueEntry); 
-        //ptl_logfile << "###### DRAMSIM REJECTING "<< *(queueEntry->request)<<endl; 
+        ptl_logfile << "###### DRAMSIM REJECTING "<< *(queueEntry->request)<<endl; 
+        assert(0);
     }
-
 #endif
 
 	return true;
@@ -283,9 +287,9 @@ void MemoryController::read_return_cb(uint id, uint64_t addr, uint64_t cycle)
 bool MemoryController::access_completed_cb(void *arg)
 {
     MemoryQueueEntry *queueEntry = (MemoryQueueEntry*)arg;
-    bool kernel = queueEntry->request->is_kernel();
 
 #ifndef DRAMSIM
+    bool kernel = queueEntry->request->is_kernel();
     int bank_no = get_bank_id(queueEntry->request->
             get_physical_address());
     banksUsed_[bank_no] = 0;

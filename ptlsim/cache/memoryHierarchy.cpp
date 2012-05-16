@@ -102,13 +102,7 @@ void MemoryHierarchy::clock()
 		cpuController->clock();
 	}
 #ifdef DRAMSIM
-	// TODO: unhardcode this -- my CPU clock defaults to 2ghz, a DDR3, sg15 part 
-	// 		has a 667MHZ clock, so only call this function 1/3 of the time
-
-	if (sim_cycle % 3 == 0)
-	{
-		((MemoryController*)memoryController_)->mem->update();	
-	}
+    ((MemoryController*)memoryController_)->mem->update();	
 #endif
 
 	Event *event;

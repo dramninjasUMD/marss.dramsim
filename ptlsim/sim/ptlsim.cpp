@@ -240,6 +240,14 @@ void PTLsimConfig::reset() {
   simpoint_file = "";
   simpoint_interval = 10e6;
   simpoint_chk_name = "simpoint";
+#ifdef DRAMSIM
+  // DRAMSim2 options
+  dramsim_device_ini_file = "ini/DDR3_micron_8M_8B_x16_sg15.ini";
+  dramsim_system_ini_file = "system.ini";
+  dramsim_pwd = "../DRAMSim2";
+  dramsim_results_dir_name = "MARSS";
+#endif
+
 }
 
 template <>
@@ -347,6 +355,13 @@ void ConfigurationParser<PTLsimConfig>::setup() {
   add(simpoint_file, "simpoint", "Create simpoint based checkpoints from given 'simpoint' file");
   add(simpoint_interval, "simpoint-interval", "Number of instructions in each interval");
   add(simpoint_chk_name, "simpoint-chk-name", "Checkpoint name prefix");
+#ifdef DRAMSIM
+  section("DRAMSim2 Config options");
+  add(dramsim_device_ini_file,  "dramsim-device-ini-file",   "Device ini file that DRAMSim2 should load");
+  add(dramsim_pwd,              "dramsim-pwd",               "Working directory that DRAMSim2 should execute in");
+  add(dramsim_system_ini_file,  "dramsim-system-ini-file",   "System ini file that DRAMSim2 should load"); 
+  add(dramsim_results_dir_name, "dramsim-results-dir-name",  "Name of the results directory where the DRAMSim2 output should go"); 
+#endif
 };
 
 #ifndef CONFIG_ONLY

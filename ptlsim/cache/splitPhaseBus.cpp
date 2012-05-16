@@ -339,7 +339,7 @@ bool BusInterconnect::broadcast_completed_cb(void *arg)
         return true;
     }
 
-	if(!can_broadcast(queueEntry->controllerQueue)) {
+	if(!can_broadcast(queueEntry->controllerQueue, queueEntry->request)) {
 		set_bus_busy(true);
 		memoryHierarchy_->add_event(&broadcastCompleted_,
 				2, NULL);
