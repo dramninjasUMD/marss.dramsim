@@ -1272,7 +1272,6 @@ static void do_simulate(Monitor *mon, const QDict *qdict)
   const char *args = qdict_get_str(qdict, "options");
   monitor_printf(mon, "simulation options received:%s\n", args);
   ptl_machine_configure(args);
-  simulation_configured = 1;
 }
 #endif
 
@@ -3102,15 +3101,6 @@ static const mon_cmd_t info_cmds[] = {
         .help       = "show qdev device model list",
         .mhandler.info = do_info_qdm,
     },
-#ifdef MARSS_QEMU
-    {
-        .name       = "simconfig",
-        .args_type  = "",
-        .params     = "",
-        .help       = "-help for all options",
-        .mhandler.info = do_simulate,
-    },
-#endif
     {
         .name       = "roms",
         .args_type  = "",

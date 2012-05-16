@@ -121,7 +121,7 @@ namespace Memory {
                         return os;
                     }
 
-                    os << "Request{", *request, "} ";
+                    os << "Request{" << *request << "} ";
 
                     os << "idx["<< this->idx <<"] ";
                     if(sender)
@@ -260,7 +260,8 @@ namespace Memory {
                         // We keep some free entries for interconnect
                         // so if the queue is 100% full then only
                         // return false else return true
-                        return pendingRequests_.isFull();
+						return (pendingRequests_.count() >= (
+									pendingRequests_.size() - 6));
                     }
                     // Otherwise we keep 10 entries free for interconnect
                     // or some internal requests (for example, memory update
@@ -300,6 +301,7 @@ namespace Memory {
 
                 Interconnect* get_lower_intrconn() { return lowerInterconnect_;}
                 Controller* get_directory() { return directory_; }
+				Controller* get_lower_cont() { return lowerCont_; }
                 CacheQueueEntry* get_new_queue_entry();
 
         };

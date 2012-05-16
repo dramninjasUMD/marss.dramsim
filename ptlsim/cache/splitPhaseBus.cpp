@@ -42,10 +42,10 @@ using namespace Memory::SplitPhaseBus;
 
 BusInterconnect::BusInterconnect(const char *name,
         MemoryHierarchy *memoryHierarchy) :
-    Interconnect(name,memoryHierarchy),
-    busBusy_(false),
-    dataBusBusy_(false),
-    lastAccessQueue(NULL)
+    Interconnect(name,memoryHierarchy)
+    , lastAccessQueue(NULL)
+    , busBusy_(false)
+    , dataBusBusy_(false)
 {
     memoryHierarchy_->add_interconnect(this);
     new_stats = new BusStats(name, &memoryHierarchy->get_machine());
@@ -70,6 +70,11 @@ BusInterconnect::BusInterconnect(const char *name,
                 arbitrate_latency_)) {
         arbitrate_latency_ = BUS_ARBITRATE_DELAY;
     }
+
+	if (!memoryHierarchy_->get_machine().get_option(name, "disable_snoop",
+				snoopDisabled_)) {
+		snoopDisabled_ = false;
+	}
 }
 
 BusInterconnect::~BusInterconnect()
@@ -143,7 +148,7 @@ bool BusInterconnect::controller_request_cb(void *arg)
             entry, nextentry) {
         if(pendingEntry->request == message->request) {
             memdebug("Bus Response received for: ", *pendingEntry);
-            int idx;
+            int idx = -1;
             Controller *sender = (Controller*)message->sender;
             foreach(i, controllers.count()) {
                 if(sender == controllers[i]->controller) {
@@ -182,7 +187,7 @@ bool BusInterconnect::controller_request_cb(void *arg)
                 foreach(x, pendingEntry->responseReceived.count()) {
                     all_set &= pendingEntry->responseReceived[x];
                 }
-                if(all_set) {
+                if(all_set || (snoopDisabled_ && pendingEntry->controllerWithData)) {
                     dataBusBusy_ = true;
                     memoryHierarchy_->add_event(&dataBroadcast_, 1,
                             pendingEntry);
@@ -196,7 +201,7 @@ bool BusInterconnect::controller_request_cb(void *arg)
     }
 
     /* its a new request, add entry into controllerqueues */
-    BusControllerQueue* busControllerQueue;
+    BusControllerQueue* busControllerQueue = NULL;
     foreach(i, controllers.count()) {
         if(controllers[i]->controller ==
                 (Controller*)message->sender) {
@@ -298,7 +303,7 @@ bool BusInterconnect::broadcast_cb(void *arg)
             queueEntry->request->get_type() != MEMORY_OP_UPDATE) {
         memdebug("Bus cant do addr broadcast, pending queue full\n");
         memoryHierarchy_->add_event(&broadcast_,
-                latency_, queueEntry);
+                latency_, NULL);
         return true;
     }
 
@@ -312,7 +317,7 @@ bool BusInterconnect::broadcast_cb(void *arg)
         memdebug("Bus cant do addr broadcast\n");
         set_bus_busy(true);
         memoryHierarchy_->add_event(&broadcast_,
-                latency_, queueEntry);
+                latency_, NULL);
         return true;
     }
 
@@ -333,6 +338,13 @@ bool BusInterconnect::broadcast_completed_cb(void *arg)
         broadcast_cb(NULL);
         return true;
     }
+
+	if(!can_broadcast(queueEntry->controllerQueue)) {
+		set_bus_busy(true);
+		memoryHierarchy_->add_event(&broadcastCompleted_,
+				2, NULL);
+		return true;
+	}
 
     memdebug("Broadcasing entry: ", *queueEntry, endl);
 
@@ -428,7 +440,7 @@ void BusInterconnect::set_data_bus()
         foreach(x, pendingEntry->responseReceived.count()) {
             all_set &= pendingEntry->responseReceived[x];
         }
-        if(all_set) {
+        if(all_set || (snoopDisabled_ && pendingEntry->controllerWithData)) {
             dataBusBusy_ = true;
             memoryHierarchy_->add_event(&dataBroadcast_, 1,
                     pendingEntry);
@@ -501,7 +513,7 @@ bool BusInterconnect::data_broadcast_completed_cb(void *arg)
 
     N_STAT_UPDATE(new_stats->data_bus_cycles, += latency_, kernel);
     W64 delay = sim_cycle - pendingEntry->initCycle;
-    assert(delay > latency_);
+    assert(delay > (W64)latency_);
     switch(pendingEntry->request->get_type()) {
         case MEMORY_OP_READ: N_STAT_UPDATE(new_stats->broadcast_cycles.read, += delay, kernel);
                              break;

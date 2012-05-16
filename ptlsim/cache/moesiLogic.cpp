@@ -41,11 +41,24 @@ void MOESILogic::handle_local_hit(CacheQueueEntry *queueEntry)
     OP_TYPE type = queueEntry->request->get_type();
     bool k_req = queueEntry->request->is_kernel();
 
+    N_STAT_UPDATE(hit_state, [oldState]++, k_req);
+
     if (type == MEMORY_OP_EVICT) {
         *state = MOESI_INVALID;
         controller->clear_entry_cb(queueEntry);
         return;
     }
+
+	if (type == MEMORY_OP_UPDATE && oldState != MOESI_MODIFIED) {
+		/* If we receive update from upper cache and local cache line state
+		 * is not MODIFIED, then send the response down because cache update
+		 * must have been initiated from this level, or lower level cache. */
+		queueEntry->dest = controller->get_lower_cont();
+		queueEntry->sendTo = controller->get_lower_intrconn();
+		queueEntry->eventFlags[CACHE_WAIT_INTERCONNECT_EVENT]++;
+		controller->wait_interconnect_cb(queueEntry);
+		return;
+	}
 
     switch (oldState) {
         case MOESI_INVALID:
@@ -83,7 +96,7 @@ void MOESILogic::handle_local_hit(CacheQueueEntry *queueEntry)
             break;
 
         default:
-            memdebug("Invalid line state: ", oldState);
+            memdebug("Invalid line state: " << oldState);
             assert(0);
     }
 
@@ -98,9 +111,12 @@ void MOESILogic::handle_local_miss(CacheQueueEntry *queueEntry)
 
     if (queueEntry->line) queueEntry->line->state = MOESI_INVALID;
 
-    /* Go to directory if its lowest private */
-    if (controller->is_lowest_private()) {
+    /* Go to directory if its lowest private and not UPDATE */
+    if (controller->is_lowest_private() &&
+            queueEntry->request->get_type() != MEMORY_OP_UPDATE) {
         queueEntry->dest = controller->get_directory();
+    } else {
+        queueEntry->dest = controller->get_lower_cont();
     }
 
     queueEntry->eventFlags[CACHE_WAIT_INTERCONNECT_EVENT]++;
@@ -224,7 +240,7 @@ void MOESILogic::handle_interconn_hit(CacheQueueEntry *queueEntry)
             break;
 
         default:
-            memdebug("Invalid line state: ", oldState);
+            memdebug("Invalid line state: " << oldState);
             assert(0);
     }
 
@@ -276,12 +292,14 @@ void MOESILogic::handle_cache_insert(CacheQueueEntry *queueEntry,
     MOESICacheLineState *state = (MOESICacheLineState*)(&queueEntry->line->state);
     MOESICacheLineState oldState = *state;
 
-    if (oldTag != InvalidTag<W64>::INVALID && oldTag != -1) {
+    if (oldTag != InvalidTag<W64>::INVALID && oldTag != (W64)-1) {
         if (oldState != MOESI_INVALID) {
             if (controller->is_lowest_private()) {
                 send_evict(queueEntry, oldTag, 1);
-            }
-        }
+			} else if (oldState == MOESI_MODIFIED) {
+				controller->send_update_to_lower(queueEntry, oldTag);
+			}
+		}
     }
 
     /* Now set the new line state */
@@ -340,12 +358,13 @@ void MOESILogic::complete_request(CacheQueueEntry *queueEntry,
                 break;
 
             default:
-                memdebug("Invalid line state: ", oldState);
+                memdebug("Invalid line state: " << oldState);
                 assert(0);
         }
 
-        if (oldState != *state)
+        if (oldState != *state) {
             UPDATE_MOESI_TRANS_STATS(oldState, *state, k_req);
+        }
 
     } else {
         if (message.request->get_type() == MEMORY_OP_EVICT) {

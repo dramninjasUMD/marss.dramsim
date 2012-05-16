@@ -334,7 +334,7 @@ bool TraceDecoder::decode_fast() {
 
     TransOp sel(OP_sel, REG_temp0, REG_zero, REG_imm, REG_temp0, 3, -1LL);
     sel.cond = COND_c;
-    this << sel, endl;
+    this << sel;
 
     // move in value
     this << TransOp(OP_mov, REG_rdx, (rashift < 2) ? REG_rdx : REG_zero, REG_temp0, REG_zero, rashift);
@@ -379,7 +379,6 @@ bool TraceDecoder::decode_fast() {
     rd.gform_ext(*this, b_mode, bits(op, 0, 3), false, true);
     DECODE(iform, ra, b_mode);
     EndOfDecode();
-    int rdreg = arch_pseudo_reg_to_arch_reg[rd.reg.reg];
     move_reg_or_mem(rd, ra);
     break;
   }
@@ -520,11 +519,16 @@ bool TraceDecoder::decode_fast() {
     this << TransOp(OP_ld, REG_temp7, REG_rsp, REG_imm, REG_zero, sizeshift, 0);
 	this << TransOp(OP_add, REG_temp7, REG_temp7, REG_imm, REG_zero,
 			sizeshift, cs_base);
-    this << TransOp(OP_add, REG_rsp, REG_rsp, REG_imm, REG_zero, 3, addend);
+
+	this << TransOp(OP_add, REG_rsp, REG_rsp, REG_imm, REG_zero, 3, addend);
+
     if (!last_flags_update_was_atomic)
       this << TransOp(OP_collcc, REG_temp5, REG_zf, REG_cf, REG_of, 3, 0, 0, FLAGS_DEFAULT_ALU);
+
     TransOp jmp(OP_jmp, REG_rip, REG_temp7, REG_zero, REG_zero, 3);
     jmp.extshift = BRANCH_HINT_POP_RAS;
+	jmp.riptaken = rip;
+	jmp.ripseq = rip;
     this << jmp;
     break;
   }
@@ -731,6 +735,8 @@ bool TraceDecoder::decode_fast() {
         // We do not know the taken or not-taken directions yet so just leave them as zero:
         TransOp transop(OP_jmp, REG_rip, rareg, REG_zero, REG_zero, rashift);
         transop.extshift = (iscall) ? BRANCH_HINT_PUSH_RAS : 0;
+		transop.riptaken = rip;
+		transop.ripseq = rip;
         this << transop;
       } else if (ra.type == OPTYPE_MEM) {
         // there is no way to encode a 32-bit jump address in x86-64 mode:
@@ -747,6 +753,8 @@ bool TraceDecoder::decode_fast() {
         // We do not know the taken or not-taken directions yet so just leave them as zero:
         TransOp transop(OP_jmp, REG_rip, REG_temp0, REG_zero, REG_zero, ra.mem.size);
         transop.extshift = (iscall) ? BRANCH_HINT_PUSH_RAS : 0;
+		transop.riptaken = rip;
+		transop.ripseq = rip;
         this << transop;
       }
 
@@ -814,7 +822,7 @@ bool TraceDecoder::decode_fast() {
 
     TransOp transop(OP_sel, destreg, destreg, srcreg, condreg, sizeshift);
     transop.cond = condcode;
-    this << transop, endl;
+    this << transop;
     break;
   }
 
@@ -837,7 +845,7 @@ bool TraceDecoder::decode_fast() {
 
     TransOp transop(OP_set, r, cctfr.ra, cctfr.rb, (rd.type == OPTYPE_MEM) ? REG_zero : r, 0);
     transop.cond = condcode;
-    this << transop, endl;
+    this << transop;
 
     if (rd.type == OPTYPE_MEM) {
       rd.mem.size = 0;
@@ -886,7 +894,6 @@ bool TraceDecoder::decode_fast() {
 
     assert(rd.type == OPTYPE_REG);
     int rdreg = arch_pseudo_reg_to_arch_reg[rd.reg.reg];
-    int rareg = arch_pseudo_reg_to_arch_reg[ra.reg.reg];
 
     // bt has no output - just flags:
     this << TransOp(opcode, (opcode == OP_bt) ? REG_temp0 : rdreg, rdreg, REG_imm, REG_zero, 3, ra.imm.imm, 0, SETFLAG_CF);
@@ -919,7 +926,7 @@ bool TraceDecoder::decode_fast() {
 	// push gs
 	EndOfDecode();
 
-	int sizeshift = 2; // fix 32 bit shift of stack
+	int sizeshift = (opsize_prefix) ? 1 : ((use64) ? 3 : 2);
 	int size = (1 << sizeshift);
 	int seg_reg = (op >> 3) & 7;
 	int r = REG_temp0;
@@ -931,14 +938,17 @@ bool TraceDecoder::decode_fast() {
 
     this << TransOp(OP_st, REG_mem, REG_rsp, REG_imm, r, sizeshift, -size);
     this << TransOp(OP_sub, REG_rsp, REG_rsp, REG_imm, REG_zero, 3, size);
+
 	break;
   }
 
-  case 0x1a1: {
+  case 0x1a1:
+  case 0x1a9: {
       // pop fs
+	  // pop gs
       EndOfDecode();
 
-      int sizeshift = 2;
+	int sizeshift = (opsize_prefix) ? 1 : ((use64) ? 3 : 2);
       int size = (1 << sizeshift);
       int seg_reg = (op >> 3) & 7;
       int r = REG_temp0;
