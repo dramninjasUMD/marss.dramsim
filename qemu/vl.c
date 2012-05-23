@@ -1427,19 +1427,18 @@ static void main_loop(void)
         do {
             bool nonblocking = false;
 #ifdef MARSS_QEMU
-            if (!vm_running && simulation_configured) {
-                simulation_configured = 0;
-                vm_start();
-            }
+            ptl_check_ptlcall_queue();
 
             if (start_simulation) {
                 cpu_set_sim_ticks();
                 in_simulation = 1;
                 start_simulation = 0;
                 tb_flush(first_cpu);
+
+                if (!vm_running)
+                    vm_start();
             }
 
-            ptl_check_ptlcall_queue();
 #endif
 #ifdef CONFIG_PROFILER
             int64_t ti;
@@ -3169,6 +3168,10 @@ int main(int argc, char **argv, char **envp)
             autostart = 0;
         }
     }
+
+#ifdef MARSS_QEMU
+    ptl_qemu_initialized();
+#endif
 
     if (incoming) {
         int ret = qemu_start_incoming_migration(incoming);

@@ -226,18 +226,13 @@ static const int MAX_BB_X86_INSNS = 60;
 static const int MAX_BB_UOPS = 63;
 static const int MAX_BB_PER_PAGE = 4096;
 
-static const int MAX_TRANSOPS_PER_USER_INSN = 16;
+static const int MAX_TRANSOPS_PER_USER_INSN = 24;
 
 extern const char* exception_names[EXCEPTION_COUNT];
 
 static inline const char* exception_name(W64 exception) {
   return (exception < EXCEPTION_COUNT) ? exception_names[exception] : "Unknown";
 }
-
-// PTLsim's internal memory related variables
-extern W64 PTLSIM_RAM_PHYSADDR;
-
-#define PTLSIM_RAM_SIZE 128*1024*1024
 
 //
 // Uniquely identifies any translation or basic block, including
@@ -418,7 +413,7 @@ struct FXSAVEStruct {
 };
 
 inline W64 x87_fp_80bit_to_64bit(const X87Reg* x87reg) {
-  W64 reg64;
+  W64 reg64 = 0;
   asm("fldt (%[mem80])\n"
       "fstpl %[mem64]\n"
       : : [mem64] "m" (reg64), [mem80] "r" (x87reg));
@@ -908,7 +903,7 @@ struct Context: public CPUX86State {
 	  return eip;
   }
 
-  int copy_from_user(void* target, Waddr source, int bytes, PageFaultErrorCode& pfec, Waddr& faultaddr, bool forexec = true) ;
+  int copy_from_vm(void* target, Waddr source, int bytes, PageFaultErrorCode& pfec, Waddr& faultaddr, bool forexec = true) ;
 
   CPUTLBEntry* get_tlb_entry(Waddr virtaddr) {
 	  int mmu_idx = cpu_mmu_index((CPUX86State*)this);
@@ -930,7 +925,7 @@ struct Context: public CPUX86State {
     return 0;
   }
 
-  int copy_from_user(void* target, Waddr source, int bytes) ;
+  int copy_from_vm(void* target, Waddr source, int bytes) ;
 
   W64 loadvirt(Waddr virtaddr, int sizeshift=3);
   W64 loadphys(Waddr addr, bool internal=0, int sizeshift=3);
@@ -1155,7 +1150,6 @@ struct Context: public CPUX86State {
   void update_mode(bool is_kernel);
 
   void cs_segment_updated() {
-	  SegmentCache *seg = &(this->segs[R_CS]);
       if((hflags & HF_LMA_MASK)) {
           use64 = (hflags >> HF_CS64_SHIFT) & 1;
       } else {
@@ -1241,7 +1235,7 @@ enum {
 #define OPCLASS_FP_CONVERTF2I           (1 << 25)
 #define OPCLASS_FP_CONVERTFP            (1 << 26)
 
-#define OPCLASS_FP                      (OPCLASS_FP_ALU | OPCLASS_FP_DIVSQRT | OPCLASS_FP_COMPARE | OPCLASS_FP_PERMUTE | OPCLASS_FP_CONVERTI2F | OPCLASS_FP_CONVERTF2I, OPCLASS_FP_CONVERTFP)
+#define OPCLASS_FP                      (OPCLASS_FP_ALU | OPCLASS_FP_DIVSQRT | OPCLASS_FP_COMPARE | OPCLASS_FP_PERMUTE | OPCLASS_FP_CONVERTI2F | OPCLASS_FP_CONVERTF2I | OPCLASS_FP_CONVERTFP)
 
 #define OPCLASS_VEC_ALU                 (1 << 27)
 
@@ -1685,16 +1679,7 @@ enum {
   BRTYPE_JMP        = 7
 };
 
-static const char* branch_type_names[8] = {
-  "bru8",
-  "bru32",
-  "br8",
-  "br32",
-  "asist",
-  "split",
-  "rep",
-  "jmp"
-};
+extern const char* branch_type_names[8];
 
 
 struct BasicBlockBase {
@@ -1786,9 +1771,6 @@ typedef bool (*assist_func_t)(Context& ctx);
 typedef W64 (*light_assist_func_t)(Context& ctx, W64 ra, W64 rb, W64 rc,
 		W16 raflags, W16 rbflags, W16 rcflags, W16& flags);
 
-const char* assist_name(assist_func_t func);
-int assist_index(assist_func_t func);
-
 const char* light_assist_name(light_assist_func_t func);
 int light_assist_index(assist_func_t func);
 void update_light_assist_stats(int idx);
@@ -1809,8 +1791,6 @@ static inline void smc_cleardirty(Waddr page_addr) {
 	tlb_protect_code(page_addr);
 }
 
-static const char* sizeshift_names[4] = {
-  "1 (byte)", "2 (word)", "4 (dword)", "8 (qword)"
-};
+extern const char* sizeshift_names[4];
 #endif // __ASM_ONLY__
 #endif // _PTLHWDEF_H

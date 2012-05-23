@@ -28,6 +28,7 @@ void DirectoryEntry::reset()
     tag   = -1;
     owner = -1;
     dirty = 0;
+	locked = 0;
 }
 
 void DirectoryEntry::init(W64 tag_)
@@ -35,6 +36,7 @@ void DirectoryEntry::init(W64 tag_)
     tag   = tag_;
     dirty = 0;
     owner = -1;
+	locked = 0;
     present.reset();
 }
 
@@ -134,9 +136,9 @@ bool DirectoryController::handle_interconnect_cb(void *arg)
     Message *message = (Message*)arg;
     MemoryRequest *request = message->request;
 
-    if (is_full()) {
-        return false;
-    }
+	if (is_full() && !find_entry(message->request)) {
+		return false;
+	}
 
     memdebug("DirCont["<< get_name() << "] received message: " <<
             *message << endl);
@@ -368,7 +370,7 @@ bool DirectoryController::write_miss_cb(void *arg)
     DirectoryEntry *dir_entry = get_directory_entry(queueEntry->request);
     DirectoryController *sig_dir = this;
 
-    if (!dir_entry) {
+    if (!dir_entry || dir_entry->locked) {
         // Retry after 1 cycle
         memoryHierarchy_->add_event(&write_miss, 1, queueEntry);
         return true;
@@ -578,10 +580,21 @@ bool DirectoryController::send_evict_cb(void *arg)
 
     /* Check if we have enough free entries in queue */
     if (pendingRequests_->remaining() <
-            queueEntry->entry->present.popcount()) {
+            (int)queueEntry->entry->present.popcount()) {
         memoryHierarchy_->add_event(&send_evict, 1, queueEntry);
         return true;
     }
+
+	/* While handling this request, if all other cache lines are
+	 * evicted then send response to this request. */
+	if (queueEntry->entry->present.iszero()) {
+		DirectoryController *sig_dir = dir_controllers[
+			queueEntry->cont->idx];
+		memoryHierarchy_->add_event(&sig_dir->send_response, 1, queueEntry);
+		return true;
+	}
+
+	queueEntry->entry->locked = 1;
 
     /* Now for each cached entry, send evict message to that
      * controller */
@@ -628,6 +641,8 @@ bool DirectoryController::send_response_cb(void *arg)
     queueEntry->entry->present.reset(queueEntry->cont->idx);
     queueEntry->shared = queueEntry->entry->present.nonzero();
     queueEntry->entry->present.set(queueEntry->cont->idx);
+
+	queueEntry->entry->locked = 0;
 
     if (queueEntry->request->get_type() == MEMORY_OP_WRITE) {
         queueEntry->entry->owner = queueEntry->cont->idx;
@@ -799,7 +814,7 @@ DirectoryEntry* DirectoryController::get_directory_entry(
 
         /* If we are removing any entry with cached line then we
          * must send evict signal to those caches. */
-        if ((old_tag != InvalidTag<W64>::INVALID && old_tag != -1) &&
+        if ((old_tag != InvalidTag<W64>::INVALID && old_tag != (W64)-1) &&
                 entry->present.nonzero()) {
             DirContBufferEntry *newEntry = pendingRequests_->alloc();
 

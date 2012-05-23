@@ -17,6 +17,25 @@
 
 #define FP_STACK_MASK 0x3f
 
+W64 l_assist_x87_fist(Context& ctx, W64 ra, W64 rb, W64 rc, W16 raflags, W16 rbflags, W16 rcflags, W16& flags)
+{
+	W64 result;
+	int size = (int)rb;
+
+	ctx.setup_qemu_switch();
+
+	switch (size) {
+		case 1: result = (W64)helper_fist_ST0(); break;
+		case 2: result = (W64)helper_fistl_ST0(); break;
+		case 3: result = (W64)helper_fistll_ST0(); break;
+		default: assert(0);
+	}
+
+	ctx.setup_ptlsim_switch();
+
+	return result;
+}
+
 bool assist_x87_fprem(Context& ctx) {
     ASSIST_IN_QEMU(helper_fprem);
     ctx.eip = ctx.reg_nextrip;
@@ -29,19 +48,6 @@ bool assist_x87_##name(Context& ctx) { \
 	ctx.eip = ctx.reg_nextrip; \
   return true; \
 }
-//  W64& tos = (W64&)ctx.fpstt; \
-//  W64& st0 = (W64&)ctx.fpregs[tos >> 3]; \
-//  W64& st1 = (W64&)ctx.fpregs[((tos >> 3) + 1) & 0x7]; \
-//  SSEType st0u(st0); SSEType st1u(st1); \
-//  (expr); \
-//  st1 = st1u.w64; \
-//  X87StatusWord* sw = (X87StatusWord*)&ctx.fpus; \
-//  sw->c1 = 0; sw->c2 = 0; \
-//  ctx.fptags[tos] = 0; \
-//  /*clearbit(ctx.commitarf[REG_fptags], tos);*/ \
-//  tos = (tos + 8) & FP_STACK_MASK; \
-//  ctx.eip = ctx.reg_nextrip; \
-//}
 
 // Fix macro problems:
 #define old_log2 log2
@@ -84,14 +90,6 @@ make_two_input_x87_func_with_pop(fyl2xp1, st1u.d = x87_fyl2xp1(st1u.d, st0u.d));
 make_two_input_x87_func_with_pop(fpatan, st1u.d = x87_fpatan(st1u.d, st0u.d));
 
 bool assist_x87_fscale(Context& ctx) {
-//  W64& tos = (W64&)ctx.fpstt;
-//  W64& st0 = (W64&)ctx.fpregs[tos >> 3];
-//  W64& st1 = (W64&)ctx.fpregs[((tos >> 3) + 1) & 0x7];
-//  SSEType st0u(st0); SSEType st1u(st1);
-//  st0u.d = st0u.d * exp2(trunc(st1u.d));
-//  st0 = st0u.w64;
-//  X87StatusWord* sw = (X87StatusWord*)&ctx.fpus;
-//  sw->c1 = 0; sw->c2 = 0;
 	ASSIST_IN_QEMU(helper_fscale);
   ctx.eip = ctx.reg_nextrip;
   return true;
@@ -105,12 +103,6 @@ bool assist_x87_##name(Context& ctx) { \
 	ctx.eip = ctx.reg_nextrip; \
   return true; \
 }
-//  W64& r = (W64&)ctx.fpregs[ctx.fpstt >> 3]; \
-//  SSEType ra(r); ra.d = (expr); r = ra.w64; \
-//  X87StatusWord* sw = (X87StatusWord*)&(ctx.fpus); \
-//  sw->c1 = 0; sw->c2 = 0; \
-//  ctx.eip = ctx.reg_nextrip; \
-//}
 
 make_unary_x87_func(fsqrt, sqrt(ra.d));
 make_unary_x87_func(fsin, sin(ra.d));
@@ -119,29 +111,9 @@ make_unary_x87_func(f2xm1, exp2(ra.d) - 1);
 
 bool assist_x87_frndint(Context& ctx) {
 	ASSIST_IN_QEMU(helper_frndint);
-//	ctx.setup_qemu_switch();
-//	helper_frndint();
     ctx.eip = ctx.reg_nextrip;
   return true;
 }
-//  W64& r = (W64&)ctx.fpregs[ctx.fpstt >> 3];
-//  SSEType ra(r);
-//  ra.d = floatx_round_to_int(ra.d, &ctx.fp_status);
-//  switch (ctx.fpuc.rc) {
-//  case 0: // round to nearest (round)
-//    ra.d = round(ra.d); break;
-//  case 1: // round down (floor)
-//    ra.d = floor(ra.d); break;
-//  case 2: // round up (ceil)
-//    ra.d = ceil(ra.d); break;
-//  case 3: // round towards zero (trunc)
-//    ra.d = trunc(ra.d); break;
-//  }
-//  r = ra.w64;
-//  X87StatusWord* sw = (X87StatusWord*)&ctx.fpus;
-//  sw->c1 = 0; sw->c2 = 0;
-//  ctx.eip = ctx.reg_nextrip;
-//}
 
 #define make_two_output_x87_func_with_push(name, expr) \
 bool assist_x87_##name(Context& ctx) { \
@@ -149,19 +121,6 @@ bool assist_x87_##name(Context& ctx) { \
 	ctx.eip = ctx.reg_nextrip; \
   return true; \
 }
-//  W64& tos = ctx.fpstt; \
-//  W64& st0 = ctx.fpregs[tos >> 3]; \
-//  W64& st1 = ctx.fpregs[((tos >> 3) - 1) & 0x7]; \
-//  SSEType st0u(st0); SSEType st1u(st1); \
-//  expr; \
-//  st0 = st0u.w64; st1 = st1u.w64; \
-//  X87StatusWord* sw = (X87StatusWord*)&ctx.fpus; \
-//  sw->c1 = 0; sw->c2 = 0; \
-//  tos = (tos - 8) & FP_STACK_MASK; \
-//  ctx.fptags[tos] = 1; \
-//  /*setbit(ctx.commitarf[REG_fptags], tos); */\
-//  ctx.eip = ctx.reg_nextrip; \
-//}
 
 // st(0) = sin(st(0)) and push cos(orig st(0))
 make_two_output_x87_func_with_push(fsincos, (st1u.d = cos(st0u.d), st0u.d = sin(st0u.d)));
@@ -229,9 +188,9 @@ bool assist_x87_fld80(Context& ctx) {
     X87Reg data;
     PageFaultErrorCode pfec;
     Waddr faultaddr = 0;
-    int bytes = ctx.copy_from_user(data, addr, sizeof(X87Reg), pfec, faultaddr, false);
+    int bytes = ctx.copy_from_vm(data, addr, sizeof(X87Reg), pfec, faultaddr, false);
 
-    if (bytes < sizeof(X87Reg) || faultaddr != 0) {
+    if (bytes < (int)sizeof(X87Reg) || faultaddr != 0) {
         ctx.eip = ctx.reg_selfrip;
         if(logable(0)) ptl_logfile << "Page fault in assist fld80\n";
         ctx.handle_page_fault(faultaddr, 0);
@@ -485,7 +444,7 @@ void check_warned_about_x87() {
     sb << endl,
       "//", endl,
       "// NOTE: This program is using a lot of legacy x87 floating point", endl,
-      "// at ", total_user_insns_committed, " commits, ", sim_cycle, " cycles.", endl,
+      "// at ", total_insns_committed, " commits, ", sim_cycle, " cycles.", endl,
       "// PTLsim executes x87 code very sub-optimally: it is HIGHLY recommended", endl,
       "// that you recompile the program with SSE/SSE2 support and/or update", endl,
       "// the standard libraries (libc, libm) to an SSE/SSE2-specific version.", endl,
@@ -604,8 +563,6 @@ bool TraceDecoder::decode_x87() {
         if (modrm.mod != 3) MakeInvalid();
         EndOfDecode();
 
-        bool pop = bit(op, 0);
-
         x87_load_stack(REG_temp0, REG_fptos);
         this << TransOp(OP_addm, REG_temp2, REG_fptos, REG_imm, REG_imm, 3, 8*modrm.rm, FP_STACK_MASK);
         x87_load_stack(REG_temp1, REG_temp2);
@@ -694,11 +651,25 @@ bool TraceDecoder::decode_x87() {
   case 0x677: { // fistp
     if (modrm.rm == 3) {
       MakeInvalid();
-    } else {
+    } else if (op == 0x677) {
+      DECODE(eform, rd, q_mode);
+      EndOfDecode();
+
+	  /* Call Light assist to convert floating to integer */
+	  TransOp ast(OP_ast, REG_temp0, REG_zero, REG_imm, REG_zero, 3, rd.mem.size);
+	  ast.riptaken = L_ASSIST_X87_FIST;
+	  ast.nouserflags = 1;
+	  this << ast;
+
+	  /* Store the result */
+	  result_store(REG_temp0, REG_temp1, rd, DATATYPE_DOUBLE);
+
+	  x87_pop_stack();
+	} else {
       DECODE(eform, rd, q_mode);
       EndOfDecode();
       x87_load_stack(REG_temp0, REG_fptos);
-      this << TransOp(OP_fcvt_d2q, REG_temp0, REG_zero, REG_temp0, REG_zero, (op == 0x651) ? 3 : 2);
+      this << TransOp(OP_fcvt_d2q, REG_temp0, REG_zero, REG_temp0, REG_zero, 3);
       result_store(REG_temp0, REG_temp1, rd, DATATYPE_DOUBLE);
       x87_pop_stack();
     }
@@ -902,16 +873,29 @@ bool TraceDecoder::decode_x87() {
     break;
   }
 
-  case 0x671 ... 0x673: { // [fisttp | fist | fistp] mem16
-    DECODE(eform, rd, w_mode);
+  case 0x671 ... 0x673: { // [fisttp | fist | fistp] mem16/mem32
+    DECODE(eform, rd, v_mode);
     EndOfDecode();
-    x87_load_stack(REG_temp0, REG_fptos);
-    this << TransOp(OP_fcvt_d2i, REG_temp0, REG_zero, REG_temp0, REG_zero, 0);
-    result_store(REG_temp0, REG_temp1, rd);
+	if (op == 0x671) { /* fisttp */
+		x87_load_stack(REG_temp0, REG_fptos);
+		this << TransOp(OP_fcvt_d2i, REG_temp0, REG_zero, REG_temp0,
+				REG_zero, 1);
+		result_store(REG_temp0, REG_temp1, rd);
 
-    int x87op = modrm.rm;
-    if ((x87op == 1) | (x87op == 3)) {
-      x87_pop_stack();
+		x87_pop_stack();
+	} else { /* fist | fistp */
+		/* Call Light assist to convert floating to integer */
+		TransOp ast(OP_ast, REG_temp0, REG_zero, REG_imm, REG_zero, 3, rd.mem.size);
+		ast.riptaken = L_ASSIST_X87_FIST;
+		ast.nouserflags = 1;
+		this << ast;
+
+		/* Store the result */
+		result_store(REG_temp0, REG_temp1, rd);
+
+		/* If its fistp (0x673) then pop */
+		if (op == 0x673)
+			x87_pop_stack();
     }
     break;
   }
@@ -994,9 +978,8 @@ bool TraceDecoder::decode_x87() {
         x87_load_stack(REG_temp0, REG_fptos);
         x87_load_stack(REG_temp1, REG_temp1);
 
-        int cmptype = lowbits(op, 2);
-        int rcond;
-        int cond;
+        int rcond = -1;
+        int cond = -1;
         bool invert = 0; // ((op & 0xff0) == 0x630);
 
         switch (lowbits(op, 2)) {
@@ -1070,9 +1053,8 @@ bool TraceDecoder::decode_x87() {
       x87_load_stack(REG_temp0, REG_fptos);
       x87_load_stack(REG_temp1, REG_temp1);
 
-      int cmptype = lowbits(op, 2);
-      int rcond;
-      int cond;
+      int rcond = -1;
+      int cond = -1;
       bool invert = 1;
 
       switch (lowbits(op, 2)) {
@@ -1113,14 +1095,29 @@ bool TraceDecoder::decode_x87() {
       case 1:   // fisttp w32
       case 2:   // fist w32
       case 3: { // fistp w32
-        x87_load_stack(REG_temp0, REG_fptos);
-        this << TransOp(OP_fcvt_d2i, REG_temp0, REG_zero, REG_temp0, REG_zero, (x87op == 1));
-        result_store(REG_temp0, REG_temp1, rd);
+		DECODE(eform, rd, v_mode);
+		EndOfDecode();
+		if (op == 0x631) { /* fisttp */
+		  x87_load_stack(REG_temp0, REG_fptos);
+		  this << TransOp(OP_fcvt_d2i, REG_temp0, REG_zero, REG_temp0,
+									   REG_zero, 1);
+		  result_store(REG_temp0, REG_temp1, rd);
 
-        if ((x87op == 1) | (x87op == 3)) {
-          x87_pop_stack();
-        }
+		  x87_pop_stack();
+		} else { /* fist | fistp */
+		  /* Call Light assist to convert floating to integer */
+		  TransOp ast(OP_ast, REG_temp0, REG_zero, REG_imm, REG_zero, 3, rd.mem.size);
+		  ast.riptaken = L_ASSIST_X87_FIST;
+		  ast.nouserflags = 1;
+		  this << ast;
 
+		  /* Store the result */
+		  result_store(REG_temp0, REG_temp1, rd);
+
+		  /* If its fistp (0x673) then pop */
+		  if (op == 0x633)
+			  x87_pop_stack();
+		}
         break;
       }
       }
