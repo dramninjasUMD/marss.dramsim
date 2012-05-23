@@ -53,7 +53,6 @@ MemoryController::MemoryController(W8 coreid, const char *name,
     }
 #ifdef DRAMSIM
 
-	extern uint64_t qemu_ram_size;
     mem = DRAMSim::getMemorySystemInstance(config.dramsim_device_ini_file.buf,
             config.dramsim_system_ini_file.buf, config.dramsim_pwd.buf,
             config.dramsim_results_dir_name.buf, qemu_ram_size>>20 ); 
