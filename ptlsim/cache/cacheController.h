@@ -101,7 +101,7 @@ struct CacheQueueEntry : public FixStateListObject
 				return os;
 			}
 
-			os << "Request{", *request, "} ";
+			os << "Request{" << *request << "} ";
 
 			os << "idx["<< this->idx <<"] ";
 			if(sender)
@@ -200,7 +200,6 @@ class CacheController : public Controller
 		CacheController(W8 coreid, const char *name,
 				MemoryHierarchy *memoryHierarchy, CacheType type);
         ~CacheController();
-		bool handle_request_cb(void *arg);
 		bool handle_interconnect_cb(void *arg);
 		int access_fast_path(Interconnect *interconnect,
 				MemoryRequest *request);
@@ -212,6 +211,7 @@ class CacheController : public Controller
 				*interconnect);
 
 		void annul_request(MemoryRequest *request);
+		void dump_configuration(YAML::Emitter &out) const;
 
 		// Callback functions for signals of cache
 		bool cache_hit_cb(void *arg);
@@ -247,14 +247,14 @@ class CacheController : public Controller
 
 		void print_map(ostream& os)
 		{
-			os << "Cache-Controller: ", get_name(), endl;
-			os << "\tconnected to: ", endl;
+			os << "Cache-Controller: " << get_name() << endl;
+			os << "\tconnected to: " << endl;
 			if(upperInterconnect_)
-				os << "\t\tupper: ", upperInterconnect_->get_name(), endl;
+				os << "\t\tupper: " << upperInterconnect_->get_name() << endl;
 			if(upperInterconnect2_)
-				os << "\t\tupper2: ", upperInterconnect2_->get_name(), endl;
+				os << "\t\tupper2: " << upperInterconnect2_->get_name() << endl;
 			if(lowerInterconnect_)
-				os << "\t\tlower: ",  lowerInterconnect_->get_name(), endl;
+				os << "\t\tlower: " <<  lowerInterconnect_->get_name() << endl;
 		}
 
 };

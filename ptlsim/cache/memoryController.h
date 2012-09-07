@@ -97,21 +97,18 @@ class MemoryController : public Controller
 		void write_return_cb(uint, uint64_t, uint64_t);
 		MultiChannelMemorySystem *mem;
 #endif
-		bool handle_request_cb(void *arg);
-		bool handle_interconnect_cb(void *arg);
-		int access_fast_path(Interconnect *interconnect,
-				MemoryRequest *request);
+		virtual bool handle_interconnect_cb(void *arg);
 		void print(ostream& os) const;
 
-        void register_interconnect(Interconnect *interconnect, int type);
-		void register_cache_interconnect(Interconnect *interconnect);
+        virtual void register_interconnect(Interconnect *interconnect, int type);
 
-		bool access_completed_cb(void *arg);
-		bool wait_interconnect_cb(void *arg);
+		virtual bool access_completed_cb(void *arg);
+		virtual bool wait_interconnect_cb(void *arg);
 
 		void annul_request(MemoryRequest *request);
+		virtual void dump_configuration(YAML::Emitter &out) const;
 
-		int get_no_pending_request(W8 coreid);
+		virtual int get_no_pending_request(W8 coreid);
 
 		bool is_full(bool fromInterconnect = false, MemoryRequest *request = NULL) const {
 			bool dramsimIsFull = false; 

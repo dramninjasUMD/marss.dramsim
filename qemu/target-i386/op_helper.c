@@ -601,13 +601,18 @@ void vm_stop(int reason);
 void helper_switch_to_sim(void)
 {
     ptl_machine_configure("-run");
-    vm_stop(0);
 
     // Flush the tb-caches so it dont call this again
     tb_flush(env);
 
-    simulation_configured = 1;
-    cpu_loop_exit();
+    raise_exception(EXCP_INTERRUPT);
+}
+
+void helper_simpoint(void)
+{
+    /* We reached to a 'simpoint' so call helper function in ptlsim
+     * to handle this 'simpoint'. */
+    ptl_simpoint_reached(env->cpu_index);
 }
 #endif
 

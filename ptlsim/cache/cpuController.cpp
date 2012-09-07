@@ -57,13 +57,6 @@ CPUController::CPUController(W8 coreid, const char *name,
     SET_SIGNAL_CB(name, "_Queue_Access", queueAccess_, &CPUController::queue_access_cb);
 }
 
-bool CPUController::handle_request_cb(void *arg)
-{
-	memdebug("Received message in controller: ", get_name(), endl);
-	assert(0);
-	return false;
-}
-
 bool CPUController::handle_interconnect_cb(void *arg)
 {
 	Message *message = (Message*)arg;
@@ -71,11 +64,11 @@ bool CPUController::handle_interconnect_cb(void *arg)
 	memdebug("Received message in controller: ", get_name(), endl);
 
 	// ignore the evict message
-	if(message->request->get_type() == MEMORY_OP_EVICT)
+	if unlikely (message->request->get_type() == MEMORY_OP_EVICT)
 		return true;
 
 	CPUControllerQueueEntry *queueEntry = find_entry(message->request);
-	if(queueEntry == NULL) {
+	if unlikely (queueEntry == NULL) {
 		return true;
 	}
 
@@ -104,7 +97,7 @@ void CPUController::annul_request(MemoryRequest *request)
 			entry->annuled = true;
 			entry->request->decRefCounter();
 
-            if (entry->depends >= 0) {
+            if unlikely  (entry->depends >= 0) {
                 CPUControllerQueueEntry *depEntry = &pendingRequests_[entry->depends];
                 if (entry->waitFor >= 0) {
                     pendingRequests_[entry->waitFor].depends = depEntry->idx;
@@ -161,12 +154,12 @@ bool CPUController::is_icache_buffer_hit(MemoryRequest *request)
 int CPUController::access_fast_path(Interconnect *interconnect,
 		MemoryRequest *request)
 {
-	int fastPathLat ;
+	int fastPathLat = 0;
     bool kernel_req = request->is_kernel();
 
-	if(interconnect == NULL) {
+	if likely (interconnect == NULL) {
 		// From CPU
-		if(request->is_instruction()) {
+		if unlikely (request->is_instruction()) {
 
 			bool bufferHit = is_icache_buffer_hit(request);
 			if(bufferHit)
@@ -180,8 +173,7 @@ int CPUController::access_fast_path(Interconnect *interconnect,
 		}
 	}
 
-	// if(fastPathLat == 0 && request->is_instruction())
-    if(fastPathLat == 0)
+    if unlikely (fastPathLat == 0)
 		return 0;
 
 	request->incRefCounter();
@@ -191,8 +183,8 @@ int CPUController::access_fast_path(Interconnect *interconnect,
 
 	CPUControllerQueueEntry* queueEntry = pendingRequests_.alloc();
 
-	if(queueEntry == NULL) {
-		memoryHierarchy_->add_event(&queueAccess_, 1, request);
+	if unlikely (queueEntry == NULL) {
+		marss_add_event(&queueAccess_, 1, request);
 		return -1;
 	}
 
@@ -308,9 +300,9 @@ void CPUController::finalize_request(CPUControllerQueueEntry *queueEntry)
 	req_latency = (req_latency >= 200) ? 199 : req_latency;
     bool kernel_req = request->is_kernel();
 
-	if(request->is_instruction()) {
+	if unlikely (request->is_instruction()) {
 		W64 lineAddress = get_line_address(request);
-		if(icacheBuffer_.isFull()) {
+		if likely (icacheBuffer_.isFull()) {
 			memdebug("Freeing icache buffer head\n");
 			icacheBuffer_.free(icacheBuffer_.head());
 			N_STAT_UPDATE(stats.queueFull, ++, request->is_kernel());
@@ -334,7 +326,7 @@ void CPUController::finalize_request(CPUControllerQueueEntry *queueEntry)
      * now check if pendingRequests_ buffer has space left then
      * clear the full flag in memory hierarchy
      */
-	if(!pendingRequests_.isFull()) {
+	if likely (!pendingRequests_.isFull()) {
 		memoryHierarchy_->set_controller_full(this, false);
 		N_STAT_UPDATE(stats.queueFull, ++, request->is_kernel());
 	}
@@ -344,12 +336,12 @@ bool CPUController::cache_access_cb(void *arg)
 {
 	CPUControllerQueueEntry* queueEntry = (CPUControllerQueueEntry*)arg;
 
-	if(queueEntry->annuled || queueEntry->cycles > 0)
+	if unlikely (queueEntry->annuled || queueEntry->cycles > 0)
 		return true;
 
     /* Send request to corresponding interconnect */
 	Interconnect *interconnect;
-	if(queueEntry->request->is_instruction())
+	if unlikely (queueEntry->request->is_instruction())
 		interconnect = int_L1_i_;
 	else
 		interconnect = int_L1_d_;
@@ -363,7 +355,7 @@ bool CPUController::cache_access_cb(void *arg)
 	memoryHierarchy_->free_message(&message);
 
 	if(!success) {
-		memoryHierarchy_->add_event(&cacheAccess_, 1, queueEntry);
+		marss_add_event(&cacheAccess_, 1, queueEntry);
 	}
 
 	return true;
@@ -376,7 +368,7 @@ bool CPUController::queue_access_cb(void *arg)
 	CPUControllerQueueEntry* queueEntry = pendingRequests_.alloc();
 
 	if(queueEntry == NULL) {
-		memoryHierarchy_->add_event(&queueAccess_, 1, request);
+		marss_add_event(&queueAccess_, 1, request);
 		return true;
 	}
 
@@ -472,6 +464,27 @@ void CPUController::register_interconnect_L1_i(Interconnect *interconnect)
 void CPUController::register_interconnect_L1_d(Interconnect *interconnect)
 {
 	int_L1_d_ = interconnect;
+}
+
+/**
+ * @brief Dump CPUController Configuration
+ *
+ * @param out YAML object
+ *
+ * Dump CPU Controller configuration in YAML format
+ */
+void CPUController::dump_configuration(YAML::Emitter &out) const
+{
+	out << YAML::Key << get_name() << YAML::Value << YAML::BeginMap;
+
+	out << YAML::Comment("This is a software related structure which \
+has no relevence to any hardware module.\n");
+
+	YAML_KEY_VAL(out, "type", "core_controller");
+	YAML_KEY_VAL(out, "pending_queue_size", pendingRequests_.size());
+	YAML_KEY_VAL(out, "icache_buffer_size", icacheBuffer_.size());
+
+	out << YAML::EndMap;
 }
 
 /* CPU Controller Builder */

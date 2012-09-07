@@ -432,9 +432,8 @@ namespace ATOM_CORE_MODEL {
         bool insert(W64 addr, W8 threadid = 0) {
             addr = floor(addr, PAGE_SIZE);
             W64 tag = tagof(addr, threadid);
-            W64 oldtag;
+            W64 oldtag = -1;
             int way = base_t::select(tag, oldtag);
-            W64 oldaddr = lowbits(oldtag, 36) << 12;
             if (logable(6)) {
                 ptl_logfile << "TLB insertion of virt page ",
                             (void*)(Waddr)addr, " (virt addr ",
@@ -460,7 +459,7 @@ namespace ATOM_CORE_MODEL {
         }
 
         int flush_virt(Waddr virtaddr, W64 threadid) {
-            return invalidate(tagof(virtaddr, threadid));
+            return this->invalidate(tagof(virtaddr, threadid));
         }
     };
 
@@ -962,7 +961,9 @@ namespace ATOM_CORE_MODEL {
                   , ipc("ipc", this)
                   , atomop_pc("atomop_pc", this)
                   , uipc("uipc", this)
-            {}
+            {
+                ipc.enable_summary();
+            }
         } st_commit;
 
         struct st_branch_predictions : public Statable
@@ -1017,7 +1018,7 @@ namespace ATOM_CORE_MODEL {
         ~AtomCore();
         
         void reset();
-        bool runcycle();
+        bool runcycle(void*);
         void check_ctx_changes();
         void flush_tlb(Context& ctx);
         void flush_tlb_virt(Context& ctx, Waddr virtaddr);
@@ -1025,6 +1026,7 @@ namespace ATOM_CORE_MODEL {
         void update_stats();
         void flush_pipeline();
         W8   get_coreid();
+		void dump_configuration(YAML::Emitter &out) const;
 
         // Pipeline related functions
         void fetch();
@@ -1055,6 +1057,8 @@ namespace ATOM_CORE_MODEL {
 
         AtomThread** threads;
         AtomThread*  running_thread;
+
+		Signal run_cycle;
 
         /**
          * @brief Fetch/Decode Queue

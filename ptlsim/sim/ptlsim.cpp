@@ -44,8 +44,8 @@
 //
 // Global variables
 //
-PTLsimConfig config;
-ConfigurationParser<PTLsimConfig> configparser;
+extern ConfigurationParser<PTLsimConfig> config;
+
 PTLsimMachine ptl_machine;
 
 ofstream ptl_logfile;
@@ -60,11 +60,11 @@ W64 unhalted_cycle_count = 0;
 W64 iterations = 0;
 W64 total_uops_executed = 0;
 W64 total_uops_committed = 0;
-W64 total_user_insns_committed = 0;
+W64 total_insns_committed = 0;
 W64 total_basic_blocks_committed = 0;
 
 W64 last_printed_status_at_ticks;
-W64 last_printed_status_at_user_insn;
+W64 last_printed_status_at_insn;
 W64 last_printed_status_at_cycle;
 W64 ticks_per_update;
 
@@ -141,17 +141,18 @@ struct SimStats : public Statable
 
     SimStats()
         : Statable("simulator")
-          , tags("tags", this)
           , version(this)
           , run(this)
           , performance(this)
+          , tags("tags", this)
     {
         tags.set_split(",");
     }
 } simstats;
 
 
-void PTLsimConfig::reset() {
+template <>
+void ConfigurationParser<PTLsimConfig>::reset() {
   help=0;
   run = 0;
   stop = 0;
@@ -170,29 +171,34 @@ void PTLsimConfig::reset() {
   log_file_size = 1<<26;
   screenshot_file = "";
   log_user_only = 0;
+  dump_config_filename = "";
 
   dump_state_now = 0;
 
   verify_cache = 0;
   stats_filename.reset();
   yaml_stats_filename="";
+  stats_format = "yaml";
   snapshot_cycles = infinity;
   snapshot_now.reset();
   time_stats_logfile = "";
   time_stats_period = 10000;
 
   start_at_rip = INVALIDRIP;
+  fast_fwd_insns = 0;
+  fast_fwd_user_insns = 0;
+  fast_fwd_checkpoint = "";
 
   // memory model
   use_memory_model = 0;
   kill_after_run = 0;
-  stop_at_user_insns = infinity;
+  stop_at_insns = infinity;
   stop_at_cycle = infinity;
   stop_at_iteration = infinity;
   stop_at_rip = INVALIDRIP;
   stop_at_marker = infinity;
   stop_at_marker_hits = infinity;
-  stop_at_user_insns_relative = infinity;
+  stop_at_insns_relative = infinity;
   insns_in_last_basic_block = 65536;
   flush_interval = infinity;
   event_trace_record_filename.reset();
@@ -233,6 +239,10 @@ void PTLsimConfig::reset() {
   // Sync Options
   sync_interval = 0;
 
+  // Simpoint options
+  simpoint_file = "";
+  simpoint_interval = 10e6;
+  simpoint_chk_name = "simpoint";
 }
 
 template <>
@@ -259,23 +269,28 @@ void ConfigurationParser<PTLsimConfig>::setup() {
   add(dump_state_now,               "dump-state-now",       "Dump the event log ring buffer and internal state of the active core");
   add(screenshot_file,              "screenshot",           "Takes screenshot of VM window at the end of simulation");
   add(log_user_only,                "log-user-only",        "Only log the user mode activities");
+  add(dump_config_filename,			"dump-config-file",		"Dump Simulated Machine Configuration into Specified file instead of log file");
 
   section("Statistics Database");
   add(stats_filename,               "stats",                "Statistics data store hierarchy root");
   add(yaml_stats_filename,          "yamlstats",                "Statistics data stores in YAML format");
+  add(stats_format,					"stats-format",          "Statistics output format, default is YAML");
   add(snapshot_cycles,              "snapshot-cycles",      "Take statistical snapshot and reset every <snapshot> cycles");
   add(snapshot_now,                 "snapshot-now",         "Take statistical snapshot immediately, using specified name");
   add(time_stats_logfile,           "time-stats-logfile",   "File to write time-series statistics (new)");
   add(time_stats_period,            "time-stats-period",    "Frequency of capturing time-stats (in cycles)");
   section("Trace Start/Stop Point");
   add(start_at_rip,                 "startrip",             "Start at rip <startrip>");
-  add(stop_at_user_insns,           "stopinsns",            "Stop after executing <stopinsns> user instructions");
+  add(fast_fwd_insns,               "fast-fwd-insns",       "Fast Fwd each CPU by <N> instructions");
+  add(fast_fwd_user_insns,          "fast-fwd-user-insns",  "Fast Fwd each CPU by <N> user level instructions");
+  add(fast_fwd_checkpoint,          "fast-fwd-checkpoint",  "Create a checkpoint <chk-name> after fast-forwarding");
+  add(stop_at_insns,                "stopinsns",            "Stop after executing <stopinsns> user instructions");
   add(stop_at_cycle,                "stopcycle",            "Stop after <stop> cycles");
   add(stop_at_iteration,            "stopiter",             "Stop after <stop> iterations (does not apply to cycle-accurate cores)");
   add(stop_at_rip,                  "stoprip",              "Stop before rip <stoprip> is translated for the first time");
   add(stop_at_marker,               "stop-at-marker",       "Stop after PTLCALL_MARKER with marker X");
   add(stop_at_marker_hits,          "stop-at-marker-hits",  "Stop after PTLCALL_MARKER is called N times");
-  add(stop_at_user_insns_relative,  "stopinsns-rel",        "Stop after executing <stopinsns-rel> user instructions relative to start of current run");
+  add(stop_at_insns_relative,       "stopinsns-rel",        "Stop after executing <stopinsns-rel> user instructions relative to start of current run");
   add(insns_in_last_basic_block,    "bbinsns",              "In final basic block, only translate <bbinsns> user instructions");
   add(flush_interval,               "flushevery",           "Flush the pipeline every N committed instructions");
   add(kill_after_run,               "kill-after-run",       "Kill PTLsim after this run");
@@ -302,10 +317,7 @@ void ConfigurationParser<PTLsimConfig>::setup() {
  add(verify_cache,               "verify-cache",                   "run simulation with storing actual data in cache");
 
   section("Core Configuration");
-  stringbuf* m_names = new stringbuf();
-  *m_names << "Available Machine: ";
-  MachineBuilder::get_all_machine_names(*m_names);
-  add(machine_config, "machine", m_names->buf);
+  add(machine_config, "machine", "Name of machine configuration to simulate");
 
  ///
  /// following are for the new memory hierarchy implementation:
@@ -333,12 +345,16 @@ void ConfigurationParser<PTLsimConfig>::setup() {
   section("Synchronization Options");
   add(sync_interval, "sync", "Number of simulation cycles between synchronization");
 
+  section("Simpoint Options");
+  add(simpoint_file, "simpoint", "Create simpoint based checkpoints from given 'simpoint' file");
+  add(simpoint_interval, "simpoint-interval", "Number of instructions in each interval");
+  add(simpoint_chk_name, "simpoint-chk-name", "Checkpoint name prefix");
 };
 
 #ifndef CONFIG_ONLY
 
-ostream& operator <<(ostream& os, const PTLsimConfig& config) {
-  return configparser.print(os, config);
+ostream& operator <<(ostream& os, const PTLsimConfig& c) {
+  return config.print(os, c);
 }
 
 static void print_banner(ostream& os) {
@@ -377,15 +393,15 @@ static void collect_common_sysinfo() {
   simstats.run.timestamp = time;
   sb.reset(); sb << hostinfo.nodename, ".", hostinfo.domainname;
   simstats.run.hostname = sb;
-  W64 hz = get_core_freq_hz();
+  W64 hz = get_native_core_freq_hz();
   simstats.run.native_hz = hz;
 }
 
 void print_usage() {
-  cerr << "Syntax: simulate <arguments...>", endl;
+  cerr << "Syntax: simconfig <arguments...>", endl;
   cerr << "In the monitor mode give the above command with options given below", endl, endl;
 
-  configparser.printusage(cerr, config);
+  config.printusage(cerr, config);
 }
 
 stringbuf current_stats_filename;
@@ -459,9 +475,24 @@ void dump_yaml_stats()
     yaml_stats_file.flush();
 }
 
+/**
+ * @brief Save stats in flat plain text format
+ */
+void dump_text_stats()
+{
+	if (!config.yaml_stats_filename)
+		return;
+
+	(StatsBuilder::get()).dump(user_stats, yaml_stats_file, "user.");
+	(StatsBuilder::get()).dump(kernel_stats, yaml_stats_file, "kernel.");
+	(StatsBuilder::get()).dump(global_stats, yaml_stats_file, "total.");
+
+	yaml_stats_file.flush();
+}
+
 static void flush_stats()
 {
-    if(config.screenshot_file.buf != "") {
+    if(config.screenshot_file.set()) {
         qemu_take_screenshot((char*)config.screenshot_file);
     }
 
@@ -472,7 +503,14 @@ static void flush_stats()
     // Call this function to setup tags and other info
     setup_sim_stats();
 
-    dump_yaml_stats();
+	if (config.stats_format == "text") {
+		dump_text_stats();
+	} else {
+		if (config.stats_format != "yaml")
+			ptl_logfile << "Unknown Stats format: " << config.stats_format <<
+				" dumping in default YAML format." << endl;
+		dump_yaml_stats();
+	}
 
     if(config.enable_mongo)
         write_mongo_stats();
@@ -484,6 +522,9 @@ static void flush_stats()
 #ifdef DRAMSIM
     machine->simulation_done();
 #endif
+
+    ptl_logfile << "Stats Summary:\n";
+    (StatsBuilder::get()).dump_summary(ptl_logfile);
 }
 
 static void kill_simulation()
@@ -507,6 +548,12 @@ static void kill_simulation()
         }
     }
 
+    shutdown_decode();
+
+	PTLsimMachine* machine = PTLsimMachine::getmachine(config.core_name.buf);
+	if (machine)
+		machine->shutdown();
+
     ptl_logfile.flush();
     ptl_logfile.close();
 
@@ -515,7 +562,7 @@ static void kill_simulation()
     ptl_quit();
 }
 
-bool handle_config_change(PTLsimConfig& config, int argc, char** argv) {
+bool handle_config_change(PTLsimConfig& config) {
   static bool first_time = true;
 
   if (config.log_filename.set() && (config.log_filename != current_log_filename)) {
@@ -568,6 +615,15 @@ if ((config.loglevel > 0) & (config.start_log_at_rip == INVALIDRIP) & (config.st
   config.stop_at_rip = signext64(config.stop_at_rip, 48);
 #endif
 
+  if ((config.fast_fwd_insns || config.fast_fwd_user_insns) && qemu_initialized) {
+      set_cpu_fast_fwd();
+  }
+
+  if (config.run && (config.fast_fwd_insns > 0 || config.fast_fwd_user_insns > 0)) {
+      /* Disable run untill cpus are fast-forwarded */
+      config.run = 0;
+  }
+
   if(config.run && !config.kill && !config.stop) {
 	  start_simulation = 1;
   }
@@ -614,7 +670,7 @@ if ((config.loglevel > 0) & (config.start_log_at_rip == INVALIDRIP) & (config.st
   }
 
   if (config.core_freq_hz == 0) {
-      config.core_freq_hz = get_core_freq_hz();
+      config.core_freq_hz = get_native_core_freq_hz();
   }
 
   return true;
@@ -664,7 +720,18 @@ static void sync_setup()
     /* First we will try to create a new semaphore if it fails
      * then some other simulation process has already setup the
      * semaphore and it will act as Master */
-    sem_id = semget(SEM_ID, 1, IPC_CREAT | 0666);
+
+    int env_sem_id = -1;
+    char *env_sem_id_p;
+
+    env_sem_id_p = getenv("MARSS_SEM_ID");
+
+    if (env_sem_id_p)
+        env_sem_id = atoi(env_sem_id_p);
+    else
+        env_sem_id = SEM_ID;
+
+    sem_id = semget(env_sem_id, 1, IPC_CREAT | 0666);
 
     if (sem_id == -1) {
         ptl_logfile << "Sempahore setup error: ";
@@ -717,6 +784,7 @@ void PTLsimMachine::update_stats() { return; }
 void PTLsimMachine::dump_state(ostream& os) { return; }
 void PTLsimMachine::flush_tlb(Context& ctx) { return; }
 void PTLsimMachine::flush_tlb_virt(Context& ctx, Waddr virtaddr) { return; }
+void PTLsimMachine::dump_configuration(ostream& os) const { return; }
 
 void PTLsimMachine::addmachine(const char* name, PTLsimMachine* machine) {
   if unlikely (!machinetable) {
@@ -751,17 +819,26 @@ PTLsimMachine* PTLsimMachine::getcurrent() {
   return curr_ptl_machine;
 }
 
-void ptl_reconfigure(char* config_str) {
+void ptl_reconfigure(const char* config_str) {
 
-	char* argv[1]; argv[0] = config_str;
+	char* argv;
 
 	if(config_str == NULL || strlen(config_str) == 0) {
 		print_usage();
 		return;
 	}
 
-	configparser.parse(config, config_str);
-	handle_config_change(config, 1, argv);
+    argv = (char*)(qemu_malloc((strlen(config_str)+1) * sizeof(char)));
+    strcpy(argv, config_str);
+    argv[strlen(config_str)] = '\0';
+
+	config.parse(config, argv);
+	handle_config_change(config);
+
+	BaseMachine* machine = (BaseMachine*)(PTLsimMachine::getmachine(
+				config.core_name));
+	machine->config_changed();
+
 	ptl_logfile << "Configuration changed: ", config, endl;
 
     if (config.sync_interval && sem_id == -1) {
@@ -773,6 +850,8 @@ void ptl_reconfigure(char* config_str) {
 	 * new configured machine
      */
 	curr_ptl_machine = NULL;
+
+    qemu_free(argv);
 }
 
 extern "C" void ptl_machine_configure(const char* config_str_) {
@@ -782,17 +861,12 @@ extern "C" void ptl_machine_configure(const char* config_str_) {
     char *config_str = (char*)qemu_mallocz(strlen(config_str_) + 1);
     pstrcpy(config_str, strlen(config_str_)+1, config_str_);
 
-    if(!ptl_machine_configured) {
-        configparser.setup();
-        config.reset();
-    }
-
     // Setup the configuration
     ptl_reconfigure(config_str);
 
     // After reconfigure reset the machine's initalized variable
     if (config.help){
-        configparser.printusage(cerr, config);
+        config.printusage(cerr, config);
         config.help=0;
     }
 /*
@@ -851,6 +925,10 @@ CPUX86State* ptl_create_new_context() {
 	Context* ctx = new Context();
 	ptl_contexts[ctx_counter] = ctx;
 	ctx_counter++;
+
+    if (config.simpoint_file.set()) {
+        init_simpoints();
+    }
 
 	return (CPUX86State*)(ctx);
 }
@@ -924,7 +1002,7 @@ void execute_checker() {
     checker_context->exception_index = 0;
     W64 old_eip = checker_context->eip;
     int old_exception_index = checker_context->exception_index;
-    int ret;
+    int ret = 0;
     while(checker_context->eip == old_eip)
         ret = cpu_exec((CPUX86State*)checker_context);
 
@@ -945,8 +1023,8 @@ void execute_checker() {
     in_simulation = 1;
 
     if(logable(4)) {
-        ptl_logfile << "Checker execution ret value: ", ret, endl;
-        ptl_logfile << "Checker flags: ", (void*)checker_context->eflags, endl;
+        ptl_logfile << "Checker execution ret value: " << ret << endl;
+        ptl_logfile << "Checker flags: " << (void*)checker_context->eflags << endl;
     }
 }
 
@@ -973,8 +1051,8 @@ void compare_checker(W8 context_id, W64 flagmask) {
     bool fail = false;
     fail = (checker_context->eip != ptl_contexts[context_id]->eip);
 
-    W64 flag1 = checker_context->reg_flags & flagmask & ~(FLAG_INV | FLAG_AF | FLAG_PF);
-    W64 flag2 = ptl_contexts[context_id]->reg_flags & flagmask & ~(FLAG_INV | FLAG_AF | FLAG_PF);
+    //W64 flag1 = checker_context->reg_flags & flagmask & ~(FLAG_INV | FLAG_AF | FLAG_PF);
+    //W64 flag2 = ptl_contexts[context_id]->reg_flags & flagmask & ~(FLAG_INV | FLAG_AF | FLAG_PF);
     //fail |= (flag1 != flag2);
 
     if(ret != 0 || ret1 != 0 || ret_x87 != 0 || fail) {
@@ -1027,7 +1105,6 @@ void add_bson_PTLsimStats(PTLsimStats *stats, bson_buffer *bb, const char *snaps
 void write_mongo_stats() {
     bson *bout;
     bson_buffer *bb;
-    char numstr[4];
     mongo_connection conn[1];
     mongo_connection_options opts;
     const char *ns = "marss.benchmarks";
@@ -1059,7 +1136,7 @@ void write_mongo_stats() {
         switch(i) {
             case 0: stats_ = user_stats; break;
             case 1: stats_ = kernel_stats; break;
-            case 2: stats_ = global_stats; break;
+            default: stats_ = global_stats; break;
         }
 
         bb = (StatsBuilder::get()).dump(stats_, bb);
@@ -1095,10 +1172,10 @@ static void set_run_stats()
 {
     static W64 seconds = 0;
     W64 tsc_at_end = rdtsc();
-    seconds += W64(ticks_to_seconds(tsc_at_end - tsc_at_start));
+    seconds += W64(ticks_to_native_seconds(tsc_at_end - tsc_at_start));
     W64 cycles_per_sec = W64(double(sim_cycle) / double(seconds));
     W64 commits_per_sec = W64(
-            double(total_user_insns_committed) / double(seconds));
+            double(total_insns_committed) / double(seconds));
 
 #define RUN_STAT(stat) \
     simstats.set_default_stats(stat); \
@@ -1154,6 +1231,39 @@ static void setup_sim_stats()
 #undef COLLECT_SYSINFO
 }
 
+/**
+ * @brief Dump Simulated Machine Configuration
+ *
+ * @param machine Simulated Machine
+ *
+ * By default it dumps the machine configuration into logfile. If dump
+ * configuration file is specified via "-dump-config-file" in simconfig then
+ * machine configuration will be written to specified file.
+ *
+ * Machine configuration is written in YAML format.
+ */
+static void dump_machine_configuration(PTLsimMachine *machine)
+{
+	ofstream *dump_file;
+	bool close_at_end;
+
+	if (config.dump_config_filename.set()) {
+		dump_file = new ofstream();
+		dump_file->open(config.dump_config_filename);
+		close_at_end = true;
+	} else {
+		dump_file = &ptl_logfile;
+		close_at_end = false;
+	}
+
+	machine->dump_configuration(*dump_file);
+
+	if (close_at_end) {
+		dump_file->close();
+		delete dump_file;
+	}
+}
+
 extern "C" uint8_t ptl_simulate() {
 	PTLsimMachine* machine = NULL;
 	char* machinename = config.core_name;
@@ -1187,14 +1297,17 @@ extern "C" uint8_t ptl_simulate() {
 		if(logable(1)) {
 			ptl_logfile << "Switching to simulation core '", machinename, "'...", endl, flush;
 			cerr <<  "Switching to simulation core '", machinename, "'...", endl, flush;
-			ptl_logfile << "Stopping after ", config.stop_at_user_insns, " commits", endl, flush;
-			cerr << "Stopping after ", config.stop_at_user_insns, " commits", endl, flush;
+			ptl_logfile << "Stopping after ", config.stop_at_insns, " commits", endl, flush;
+			cerr << "Stopping after ", config.stop_at_insns, " commits", endl, flush;
 		}
 
+		/* Dump Machine configuration */
+		dump_machine_configuration(machine);
+
 		/* Update stats every half second: */
-		ticks_per_update = seconds_to_ticks(0.2);
+		ticks_per_update = seconds_to_native_ticks(0.2);
 		last_printed_status_at_ticks = 0;
-		last_printed_status_at_user_insn = 0;
+		last_printed_status_at_insn = 0;
 		last_printed_status_at_cycle = 0;
 
 		tsc_at_start = rdtsc();
@@ -1263,8 +1376,7 @@ extern "C" uint8_t ptl_simulate() {
 #endif
 	machine->run(config);
 
-
-	if (config.stop_at_user_insns <= total_user_insns_committed || config.kill == true
+	if (config.stop_at_insns <= total_insns_committed || config.kill == true
 			|| config.stop == true || config.stop_at_cycle < sim_cycle) {
 		machine->stopped = 1;
 	}
@@ -1291,10 +1403,10 @@ extern "C" uint8_t ptl_simulate() {
 	W64 tsc_at_end = rdtsc();
 	curr_ptl_machine = NULL;
 
-	W64 seconds = W64(ticks_to_seconds(tsc_at_end - tsc_at_start));
+	W64 seconds = W64(ticks_to_native_seconds(tsc_at_end - tsc_at_start));
 	stringbuf sb;
-	sb << endl, "Stopped after ", sim_cycle, " cycles, ", total_user_insns_committed, " instructions and ",
-	   seconds, " seconds of sim time (cycle/sec: ", W64(double(sim_cycle) / double(seconds)), " Hz, insns/sec: ", W64(double(total_user_insns_committed) / double(seconds)), ", insns/cyc: ",  double(total_user_insns_committed) / double(sim_cycle), ")", endl;
+	sb << endl, "Stopped after ", sim_cycle, " cycles, ", total_insns_committed, " instructions and ",
+	   seconds, " seconds of sim time (cycle/sec: ", W64(double(sim_cycle) / double(seconds)), " Hz, insns/sec: ", W64(double(total_insns_committed) / double(seconds)), ", insns/cyc: ",  double(total_insns_committed) / double(sim_cycle), ")", endl;
 
 	ptl_logfile << sb, flush;
 	cerr << sb, flush;
@@ -1319,6 +1431,7 @@ extern "C" uint8_t ptl_simulate() {
 	}
 
     machine->first_run = 1;
+    sim_update_clock_offset = 1;
 
     if(config.stop) {
         config.stop = false;
@@ -1337,13 +1450,13 @@ extern "C" void update_progress() {
   W64 ticks = rdtsc();
   W64s delta = (ticks - last_printed_status_at_ticks);
   if unlikely (delta < 0) delta = 0;
-  if unlikely (delta >= ticks_per_update) {
-    double seconds = ticks_to_seconds(delta);
+  if unlikely (delta >= (W64s)ticks_per_update) {
+    double seconds = ticks_to_native_seconds(delta);
     double cycles_per_sec = (sim_cycle - last_printed_status_at_cycle) / seconds;
-    double insns_per_sec = (total_user_insns_committed - last_printed_status_at_user_insn) / seconds;
+    double insns_per_sec = (total_insns_committed - last_printed_status_at_insn) / seconds;
 
     stringbuf sb;
-    sb << "Completed ", intstring(sim_cycle, 13), " cycles, ", intstring(total_user_insns_committed, 13), " commits: ",
+    sb << "Completed ", intstring(sim_cycle, 13), " cycles, ", intstring(total_insns_committed, 13), " commits: ",
       intstring((W64)cycles_per_sec, 9), " Hz, ", intstring((W64)insns_per_sec, 9), " insns/sec";
 
     sb << ": rip";
@@ -1372,7 +1485,7 @@ extern "C" void update_progress() {
 
     last_printed_status_at_ticks = ticks;
     last_printed_status_at_cycle = sim_cycle;
-    last_printed_status_at_user_insn = total_user_insns_committed;
+    last_printed_status_at_insn = total_insns_committed;
   }
 
   if unlikely ((sim_cycle - last_stats_captured_at_cycle) >= config.snapshot_cycles) {
@@ -1452,6 +1565,18 @@ extern "C" void add_qemu_io_event(QemuIOCB fn, void *arg, int delay)
 W64 ns_to_simcycles(W64 ns)
 {
     return (config.core_freq_hz/1e9) * ns;
+}
+
+/**
+ * @brief Convert Simulation cycles to Nano-Seconds based on CPU Frequency
+ *
+ * @param cycles Cycles to convert
+ *
+ * @return Nano-second value
+ */
+float simcycles_to_ns(W64 cycles)
+{
+	return (1e9/float(config.core_freq_hz)) * float(cycles);
 }
 
 #endif // CONFIG_ONLY

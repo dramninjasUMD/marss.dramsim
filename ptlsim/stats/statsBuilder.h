@@ -43,6 +43,7 @@ class Statable {
     private:
         dynarray<Statable*> childNodes;
         dynarray<StatObjBase*> leafs;
+        bool summarize;
         bool dump_disabled;
         bool periodic_enabled;
         Statable *parent;
@@ -146,6 +147,16 @@ class Statable {
             name = str;
         }
 
+		/**
+		 * @brief Get the name of Stats Object
+		 *
+		 * @return name of object
+		 */
+		char* get_name() const
+		{
+			return name.buf;
+		}
+
         /**
          * @brief get default Stats*
          *
@@ -183,15 +194,25 @@ class Statable {
         void disable_dump_periodic() { periodic_enabled = true; }
         bool is_dump_periodic() { return periodic_enabled; }
 
+        void enable_summary()
+        {
+            summarize = true;
+            if (parent) parent->enable_summary();
+        }
+
+        ostream& dump_summary(ostream &os, Stats *stats, const char *pfx) const;
+        bool is_summarize_enabled() { return summarize; }
+
         /**
          * @brief Dump string representation of  Statable and it childs
          *
          * @param os
          * @param stats Stats object from which get stats data
+		 * @param pfx Prefix string to add before each node
          *
          * @return
          */
-        ostream& dump(ostream &os, Stats *stats);
+        ostream& dump(ostream &os, Stats *stats, const char* pfx="");
 
         /**
          * @brief Dump YAML representation of Statable and its childs
@@ -223,10 +244,9 @@ class Statable {
 
         ostream& dump_header(ostream &os) const;
 
-        stringbuf *get_full_stat_string();
+        stringbuf *get_full_stat_string() const;
 
-
-
+		StatObjBase* get_stat_obj(dynarray<stringbuf*> &names, int idx);
 };
 
 /**
@@ -314,10 +334,11 @@ class StatsBuilder {
          *
          * @param stats Use given Stats* for values
          * @param os ostream object to dump string
+		 * @param pfx Prefix string to add before each node
          *
          * @return
          */
-        ostream& dump(Stats *stats, ostream &os) const;
+        ostream& dump(Stats *stats, ostream &os, const char *pfx="") const;
 
         /**
          * @brief Dump Stats tree in YAML format
@@ -366,6 +387,7 @@ class StatsBuilder {
         bool is_dump_periodic() { return rootNode->is_dump_periodic(); }
         ostream& dump_header(ostream &os) const;
         ostream& dump_periodic(ostream &os, W64 cycle) const;
+        ostream& dump_summary(ostream &os) const;
 
         void delete_nodes()
         {
@@ -374,6 +396,9 @@ class StatsBuilder {
             rootNode = new Statable("", true);
             stat_offset = 0;
         }
+
+		StatObjBase* get_stat_obj(stringbuf &name);
+		StatObjBase* get_stat_obj(const char *name);
 };
 
 /**
@@ -416,6 +441,7 @@ class Stats {
         Stats& operator=(Stats& rhs_stats)
         {
             memcpy(mem, rhs_stats.mem, sizeof(W8) * STATS_SIZE);
+            return *this;
         }
 };
 
@@ -427,12 +453,14 @@ class StatObjBase {
         Stats *default_stats;
         Statable *parent;
         stringbuf name;
+        bool summarize;
         bool dump_disabled;
         bool periodic_enabled;
 
     public:
         StatObjBase(const char *name, Statable *parent)
             : parent(parent)
+              , summarize(false)
               , dump_disabled(false)
               , periodic_enabled(false)
         {
@@ -444,7 +472,8 @@ class StatObjBase {
         virtual void set_default_stats(Stats *stats);
 
 
-        virtual ostream& dump(ostream& os, Stats *stats) const = 0;
+        virtual ostream& dump(ostream& os, Stats *stats,
+				const char* pfx="") const = 0;
         virtual YAML::Emitter& dump(YAML::Emitter& out,
                 Stats *stats) const = 0;
         virtual bson_buffer* dump(bson_buffer* out,
@@ -467,7 +496,15 @@ class StatObjBase {
 
         inline bool is_dump_periodic() const { return periodic_enabled; }
 
-        stringbuf *get_full_stat_string()
+        void enable_summary()
+        {
+            summarize = true;
+            parent->enable_summary();
+        }
+
+        inline bool is_summarize_enabled() const { return summarize; }
+
+        stringbuf *get_full_stat_string() const
         {
             if (parent){
                 stringbuf *parent_name = parent->get_full_stat_string();
@@ -483,6 +520,16 @@ class StatObjBase {
             }
         }
 
+		/**
+		 * @brief Get name of the Stats Object
+		 *
+		 * @return char* containing name
+		 */
+		char* get_name() const
+		{
+			return name.buf;
+		}
+
         virtual ostream &dump_header(ostream &os) {
             if (is_dump_periodic()) {
                 stringbuf *full_string = get_full_stat_string();
@@ -490,8 +537,10 @@ class StatObjBase {
 
                 delete full_string;
             }
+            return os;
         }
 
+        virtual ostream& dump_summary(ostream& os, Stats* stats, const char* pfx) const = 0;
 
         virtual void add_stats(Stats& dest_stats, Stats& src_stats) = 0;
         virtual void sub_stats(Stats& dest_stats, Stats& src_stats) = 0;
@@ -787,17 +836,20 @@ class StatObj : public StatObjBase {
          *
          * @param os ostream& where string will be added
          * @param stats Stats object from which get stats data
+		 * @param pfx Prefix string to add before printing stats name
          *
          * @return updated ostream object
          */
-        ostream& dump(ostream& os, Stats *stats) const
+        ostream& dump(ostream& os, Stats *stats, const char* pfx="") const
         {
             if(is_dump_disabled()) return os;
 
             T var = (*this)(stats);
+			stringbuf *full_string = get_full_stat_string();
 
-            os << name << ":" << var << "\n";
+            os << pfx << *full_string << ":" << var << "\n";
 
+			delete full_string;
             return os;
         }
 
@@ -874,6 +926,17 @@ class StatObj : public StatObjBase {
             }
             return os;
         }
+
+        ostream &dump_summary(ostream &os, Stats *stats, const char* pfx) const
+        {
+            if (is_summarize_enabled()) {
+                T& val = (*this)(stats);
+                stringbuf *name = get_full_stat_string();
+                os << pfx << "." << (*name) << " = " << val << endl;
+            }
+
+            return os;
+        }
 };
 
 /**
@@ -889,6 +952,7 @@ class StatArray : public StatObjBase {
         T* default_var;
         const char** labels;
         bitvec<size> periodic_flag;
+        bitvec<size> summarize_flag;
 
         inline void set_default_var_ptr()
         {
@@ -969,19 +1033,32 @@ class StatArray : public StatObjBase {
          *
          * @param os dump into this ostream object
          * @param stats Stats* from which to get array values
+		 * @param pfx Prefix string to add before printing stats name
          *
          * @return
          */
-        ostream& dump(ostream &os, Stats *stats) const
+        ostream& dump(ostream &os, Stats *stats, const char* pfx="") const
         {
             if(is_dump_disabled()) return os;
 
-            os << name << ": ";
-            BaseArr& arr = (*this)(stats);
-            foreach(i, size) {
-                os << arr[i] << " ";
-            }
-            os << "\n";
+			stringbuf *full_string = get_full_stat_string();
+
+			if (labels) {
+				BaseArr& arr = (*this)(stats);
+				foreach(i, size) {
+					os << pfx << *full_string << "." << labels[i] <<
+						":" << arr[i] << "\n";
+				}
+			} else {
+				os << pfx << *full_string << ":";
+				BaseArr& arr = (*this)(stats);
+				foreach(i, size) {
+					os << arr[i] << " ";
+				}
+				os << "\n";
+			}
+
+			delete full_string;
 
             return os;
         }
@@ -1146,6 +1223,41 @@ class StatArray : public StatObjBase {
             return os;
         }
 
+        void enable_summary(int id = -1)
+        {
+            StatObjBase::enable_summary();
+            if(id == -1) {
+                summarize_flag.setall();
+            } else {
+                assert(id < size);
+                summarize_flag[id] = 1;
+            }
+        }
+
+        ostream &dump_summary(ostream &os, Stats *stats, const char* pfx) const
+        {
+            if (!is_summarize_enabled()) return os;
+
+            BaseArr& arr = (*this)(stats);
+            stringbuf* name = get_full_stat_string();
+
+            foreach (i, size) {
+                if(summarize_flag[i]) {
+                    os << pfx << "." << (*name);
+
+                    if (labels) {
+                        os << "." << labels[i];
+                    } else {
+                        os << "." << i;
+                    }
+
+                    os << " = " << arr[i] << endl;
+                }
+            }
+
+            return os;
+        }
+
         /**
          * @brief Get size of this array
          *
@@ -1185,7 +1297,7 @@ class StatString : public StatObjBase {
 
     public:
 
-        static const int MAX_STAT_STR_SIZE = 256;
+        static const uint16_t MAX_STAT_STR_SIZE = 256;
 
         /**
          * @brief Default constructor
@@ -1306,26 +1418,30 @@ class StatString : public StatObjBase {
          *
          * @param os stream to dump
          * @param stats Stats database to read string from
+		 * @param pfx Prefix string to add before printing stats name
          */
-        ostream& dump(ostream& os, Stats *stats) const
+        ostream& dump(ostream& os, Stats *stats, const char* pfx="") const
         {
             if(is_dump_disabled()) return os;
 
             char* var = (*this)(stats);
+			stringbuf *full_string = get_full_stat_string();
 
             if(split[0] != '\0') {
                 dynarray<stringbuf*> tags;
                 stringbuf st_tags; st_tags << var;
                 st_tags.split(tags, split);
 
-                os << name << "[";
+                os << pfx << *full_string << "[";
                 foreach(i, tags.size()) {
                     os << i << ":" << tags[i]->buf << ", ";
                 }
-                os << "\n";
+                os << "]\n";
             } else {
-                os << name << ":" << var << "\n";
+                os << pfx << *full_string << ":" << var << "\n";
             }
+
+			delete full_string;
 
             return os;
         }
@@ -1419,6 +1535,10 @@ class StatString : public StatObjBase {
             return os;
         }
 
+        ostream &dump_summary(ostream &os, Stats *stats, const char* pfx) const
+        {
+            return os;
+        }
 };
 
 /**
@@ -1529,13 +1649,14 @@ class StatEquation : public StatObj<K> {
          *
          * @param os stream to dump into
          * @param stats Stats Database that holds the value
+		 * @param pfx Prefix string to add before printing stats name
          *
          * @return Updated stream
          */
-        ostream& dump(ostream& os, Stats *stats) const
+        ostream& dump(ostream& os, Stats *stats, const char* pfx="") const
         {
             compute(stats);
-            return base_t::dump(os, stats);
+            return base_t::dump(os, stats, pfx);
         }
 
         /**

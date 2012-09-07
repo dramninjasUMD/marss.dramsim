@@ -79,6 +79,8 @@ namespace CoherentCache {
                     MemoryHierarchy *mem_hierarchy)
                 : CoherenceLogic("moesi", cont, parent, mem_hierarchy)
                   , state_transition("state_trans", this)
+                  , miss_state("miss_state", this, MOESIStateNames)
+                  , hit_state("hit_state", this, MOESIStateNames)
             {}
 
             void handle_local_hit(CacheQueueEntry *queueEntry);
@@ -93,6 +95,7 @@ namespace CoherentCache {
                     Message &message);
             bool is_line_valid(CacheLine *line);
             void invalidate_line(CacheLine *line);
+			void dump_configuration(YAML::Emitter &out) const;
 
             void send_response(CacheQueueEntry *queueEntry,
                     Interconnect *sendTo);
@@ -104,6 +107,8 @@ namespace CoherentCache {
 
             /* Statistics */
             StatArray<W64,NUM_MOESI_STATE_TRANS> state_transition;
+            StatArray<W64, NUM_MOESI_STATES> miss_state;
+            StatArray<W64, NUM_MOESI_STATES> hit_state;
     };
 
 };

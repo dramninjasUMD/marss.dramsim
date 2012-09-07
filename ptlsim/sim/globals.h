@@ -122,7 +122,7 @@ static inline void assert_fail_trap(const char *__assertion, const char *__file,
 
 #ifdef DISABLE_ASSERT
 #undef assert
-#define assert(expr) (expr)
+#define assert(expr) ;
 #else
 #define assert(expr) (__ASSERT_VOID_CAST ((unlikely(expr)) ? 0 : (assert_fail (__STRING(expr), __FILE__, __LINE__, __PRETTY_FUNCTION__), 0)))
 #endif
@@ -244,7 +244,7 @@ static inline bool fits_in_signed_32bit(W64s v) { return fits_in_signed_nbit(v, 
 #define clearbit(x, i) ((x) &= (W64)(~(1LL << (i))))
 #define assignbit(x, i, v) ((x) = (((x) &= (W64)(~(1LL << (i)))) | (((W64)((bool)(v))) << i)));
 
-#define foreach(i, n) for (size_t i = 0; i < (n); i++)
+#define foreach(i, n) for (int i = 0; i < (n); i++)
 
 static inline W64s signext64(W64s x, const int i) { return (x << (64-i)) >> (64-i); }
 static inline W32s signext32(W32s x, const int i) { return (x << (32-i)) >> (32-i); }
@@ -280,10 +280,10 @@ inline W32 x86_sse_pmovmskw(vec8w vec) { return x86_sse_pmovmskb(x86_sse_packssw
 inline vec16b x86_sse_psadbw(vec16b a, vec16b b) { asm("psadbw %[b],%[a]" : [a] "+x" (a) : [b] "xg" (b)); return a; }
 template <int i> inline W16 x86_sse_pextrw(vec16b a) { W32 rd; asm("pextrw %[i],%[a],%[rd]" : [rd] "=r" (rd) : [a] "x" (a), [i] "N" (i)); return rd; }
 
-inline vec16b x86_sse_zerob() { vec16b rd; asm("pxor %[rd],%[rd]" : [rd] "+x" (rd)); return rd; }
-inline vec16b x86_sse_onesb() { vec16b rd; asm("pcmpeqb %[rd],%[rd]" : [rd] "+x" (rd)); return rd; }
-inline vec8w x86_sse_zerow() { vec8w rd; asm("pxor %[rd],%[rd]" : [rd] "+x" (rd)); return rd; }
-inline vec8w x86_sse_onesw() { vec8w rd; asm("pcmpeqw %[rd],%[rd]" : [rd] "+x" (rd)); return rd; }
+inline vec16b x86_sse_zerob() { vec16b rd = {0}; asm("pxor %[rd],%[rd]" : [rd] "+x" (rd)); return rd; }
+inline vec16b x86_sse_onesb() { vec16b rd = {0}; asm("pcmpeqb %[rd],%[rd]" : [rd] "+x" (rd)); return rd; }
+inline vec8w x86_sse_zerow() { vec8w rd = {0}; asm("pxor %[rd],%[rd]" : [rd] "+x" (rd)); return rd; }
+inline vec8w x86_sse_onesw() { vec8w rd = {0}; asm("pcmpeqw %[rd],%[rd]" : [rd] "+x" (rd)); return rd; }
 
 // If lddqu is available (SSE3: Athlon 64 (some cores, like X2), Pentium 4 Prescott), use that instead. It may be faster.
 
@@ -296,11 +296,14 @@ inline vec16b x86_sse_dupb(const byte b) {
 }
 
 inline vec8w x86_sse_dupw(const W16 b) {
+  union {
+      vec8w v;
+      W32 wp[4];
+  } val;
+
   W32 w = (b << 16) | b;
-  vec8w v;
-  W32* wp = (W32*)&v;
-  wp[0] = w; wp[1] = w; wp[2] = w; wp[3] = w;
-  return v;
+  foreach(i, 4) { val.wp[i] = w; }
+  return val.v;
 }
 
 inline void x86_set_mxcsr(W32 value) { asm volatile("ldmxcsr %[value]" : : [value] "m" (value)); }
@@ -436,18 +439,33 @@ static inline W64 x86_ror(W64 r, int n) {
 template <typename T>
 static inline T dupb(const byte b) { return T(b) * T(0x0101010101010101ULL); }
 
-//
-// Get the frequency of the CPU core(s) in cycles per second
-// Defined differently depending on the (usermode vs bare hardware in kernel mode)
-//
-W64 get_core_freq_hz();
+/**
+ * @brief Get Host Machine's CPU Frequency
+ *
+ * @return Frequency of CPU in HZ
+ */
+W64 get_native_core_freq_hz();
 
-static inline double ticks_to_seconds(W64 ticks) {
-  return (double)ticks / (double)get_core_freq_hz();
+/**
+ * @brief Convert 'ticks' to Host seconds
+ *
+ * @param ticks Ticks/Cycles counter used for conversion
+ *
+ * @return Seconds of Host Machine
+ */
+static inline double ticks_to_native_seconds(W64 ticks) {
+  return (double)ticks / (double)get_native_core_freq_hz();
 }
 
-static inline W64 seconds_to_ticks(double seconds) {
-  return (W64)(seconds * (double)get_core_freq_hz());
+/**
+ * @brief Convert seconds to Host 'ticks'
+ *
+ * @param seconds value used for conversion
+ *
+ * @return Ticks/Cycles based on Host Machine's Frequency
+ */
+static inline W64 seconds_to_native_ticks(double seconds) {
+  return (W64)(seconds * (double)get_native_core_freq_hz());
 }
 
 template <int n> struct lg { static const int value = 1 + lg<n/2>::value; };

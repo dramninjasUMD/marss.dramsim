@@ -42,10 +42,10 @@ using namespace Memory::SplitPhaseBus;
 
 BusInterconnect::BusInterconnect(const char *name,
         MemoryHierarchy *memoryHierarchy) :
-    Interconnect(name,memoryHierarchy),
-    busBusy_(false),
-    dataBusBusy_(false),
-    lastAccessQueue(NULL)
+    Interconnect(name,memoryHierarchy)
+    , lastAccessQueue(NULL)
+    , busBusy_(false)
+    , dataBusBusy_(false)
 {
     memoryHierarchy_->add_interconnect(this);
     new_stats = new BusStats(name, &memoryHierarchy->get_machine());
@@ -70,6 +70,11 @@ BusInterconnect::BusInterconnect(const char *name,
                 arbitrate_latency_)) {
         arbitrate_latency_ = BUS_ARBITRATE_DELAY;
     }
+
+	if (!memoryHierarchy_->get_machine().get_option(name, "disable_snoop",
+				snoopDisabled_)) {
+		snoopDisabled_ = false;
+	}
 }
 
 BusInterconnect::~BusInterconnect()
@@ -143,7 +148,7 @@ bool BusInterconnect::controller_request_cb(void *arg)
             entry, nextentry) {
         if(pendingEntry->request == message->request) {
             memdebug("Bus Response received for: ", *pendingEntry);
-            int idx;
+            int idx = -1;
             Controller *sender = (Controller*)message->sender;
             foreach(i, controllers.count()) {
                 if(sender == controllers[i]->controller) {
@@ -182,9 +187,9 @@ bool BusInterconnect::controller_request_cb(void *arg)
                 foreach(x, pendingEntry->responseReceived.count()) {
                     all_set &= pendingEntry->responseReceived[x];
                 }
-                if(all_set) {
+                if(all_set || (snoopDisabled_ && pendingEntry->controllerWithData)) {
                     dataBusBusy_ = true;
-                    memoryHierarchy_->add_event(&dataBroadcast_, 1,
+                    marss_add_event(&dataBroadcast_, 1,
                             pendingEntry);
                 }
             } else {
@@ -196,7 +201,7 @@ bool BusInterconnect::controller_request_cb(void *arg)
     }
 
     /* its a new request, add entry into controllerqueues */
-    BusControllerQueue* busControllerQueue;
+    BusControllerQueue* busControllerQueue = NULL;
     foreach(i, controllers.count()) {
         if(controllers[i]->controller ==
                 (Controller*)message->sender) {
@@ -223,7 +228,7 @@ bool BusInterconnect::controller_request_cb(void *arg)
 
     if(!is_busy()) {
         /* address bus */
-        memoryHierarchy_->add_event(&broadcast_, 1, NULL);
+        marss_add_event(&broadcast_, 1, NULL);
         set_bus_busy(true);
     } else {
         N_STAT_UPDATE(new_stats->bus_not_ready, ++, kernel);
@@ -281,7 +286,7 @@ bool BusInterconnect::broadcast_cb(void *arg)
         queueEntry = (BusQueueEntry*)arg;
     else {
         queueEntry = arbitrate_round_robin();
-        memoryHierarchy_->add_event(&broadcast_, arbitrate_latency_, queueEntry);
+        marss_add_event(&broadcast_, arbitrate_latency_, queueEntry);
         return true;
     }
 
@@ -297,8 +302,8 @@ bool BusInterconnect::broadcast_cb(void *arg)
     if(pendingRequests_.isFull() &&
             queueEntry->request->get_type() != MEMORY_OP_UPDATE) {
         memdebug("Bus cant do addr broadcast, pending queue full\n");
-        memoryHierarchy_->add_event(&broadcast_,
-                latency_, queueEntry);
+        marss_add_event(&broadcast_,
+                latency_, NULL);
         return true;
     }
 
@@ -311,14 +316,14 @@ bool BusInterconnect::broadcast_cb(void *arg)
     if(!can_broadcast(queueEntry->controllerQueue, queueEntry->request)) {
         memdebug("Bus cant do addr broadcast\n");
         set_bus_busy(true);
-        memoryHierarchy_->add_event(&broadcast_,
-                latency_, queueEntry);
+        marss_add_event(&broadcast_,
+                latency_, NULL);
         return true;
     }
 
     set_bus_busy(true);
 
-    memoryHierarchy_->add_event(&broadcastCompleted_,
+    marss_add_event(&broadcastCompleted_,
             latency_, queueEntry);
 
     return true;
@@ -333,6 +338,13 @@ bool BusInterconnect::broadcast_completed_cb(void *arg)
         broadcast_cb(NULL);
         return true;
     }
+
+	if(!can_broadcast(queueEntry->controllerQueue)) {
+		set_bus_busy(true);
+		marss_add_event(&broadcastCompleted_,
+				2, NULL);
+		return true;
+	}
 
     memdebug("Broadcasing entry: ", *queueEntry, endl);
 
@@ -428,9 +440,9 @@ void BusInterconnect::set_data_bus()
         foreach(x, pendingEntry->responseReceived.count()) {
             all_set &= pendingEntry->responseReceived[x];
         }
-        if(all_set) {
+        if(all_set || (snoopDisabled_ && pendingEntry->controllerWithData)) {
             dataBusBusy_ = true;
-            memoryHierarchy_->add_event(&dataBroadcast_, 1,
+            marss_add_event(&dataBroadcast_, 1,
                     pendingEntry);
             return;
         }
@@ -452,7 +464,7 @@ bool BusInterconnect::data_broadcast_cb(void *arg)
      * signal so next time it doesn't need to arbitrate
      */
     if(!can_broadcast(pendingEntry->controllerQueue, pendingEntry->request)) {
-        memoryHierarchy_->add_event(&dataBroadcast_,
+        marss_add_event(&dataBroadcast_,
                 latency_, arg);
         return true;
     }
@@ -462,7 +474,7 @@ bool BusInterconnect::data_broadcast_cb(void *arg)
         return true;
     }
 
-    memoryHierarchy_->add_event(&dataBroadcastCompleted_,
+    marss_add_event(&dataBroadcastCompleted_,
             latency_, pendingEntry);
 
     return true;
@@ -501,7 +513,7 @@ bool BusInterconnect::data_broadcast_completed_cb(void *arg)
 
     N_STAT_UPDATE(new_stats->data_bus_cycles, += latency_, kernel);
     W64 delay = sim_cycle - pendingEntry->initCycle;
-    assert(delay > latency_);
+    assert(delay > (W64)latency_);
     switch(pendingEntry->request->get_type()) {
         case MEMORY_OP_READ: N_STAT_UPDATE(new_stats->broadcast_cycles.read, += delay, kernel);
                              break;
@@ -519,6 +531,25 @@ bool BusInterconnect::data_broadcast_completed_cb(void *arg)
     set_data_bus();
 
     return true;
+}
+
+/**
+ * @brief Dump Split Bus Interconnect Configuration in YAML Format
+ *
+ * @param out YAML Object
+ */
+void BusInterconnect::dump_configuration(YAML::Emitter &out) const
+{
+	out << YAML::Key << get_name() << YAML::Value << YAML::BeginMap;
+
+	YAML_KEY_VAL(out, "type", "interconnect");
+	YAML_KEY_VAL(out, "latency", latency_);
+	YAML_KEY_VAL(out, "arbitrate_latency", arbitrate_latency_);
+	if (controllers.size() > 0)
+		YAML_KEY_VAL(out, "per_cont_queue_size",
+				controllers[0]->queue.size());
+
+	out << YAML::EndMap;
 }
 
 struct SplitPhaseBusBuilder : public InterconnectBuilder

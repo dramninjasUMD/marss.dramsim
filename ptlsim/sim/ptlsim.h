@@ -24,11 +24,6 @@
 
 #define contextcount smp_cpus
 
-extern W64 sim_cycle;
-extern W64 unhalted_cycle_count;
-extern W64 total_uops_committed;
-extern W64 total_user_insns_committed;
-
 void user_process_terminated(int rc);
 
 ostream& print_user_context(ostream& os, const UserContext& ctx, int width = 4);
@@ -66,10 +61,12 @@ struct PTLsimMachine : public Statable {
   virtual void dump_state(ostream& os);
   virtual void flush_tlb(Context& ctx);
   virtual void flush_tlb_virt(Context& ctx, Waddr virtaddr);
+  virtual void dump_configuration(ostream& os) const;
   virtual void reset(){};
 #ifdef DRAMSIM
   virtual void simulation_done();
 #endif
+  virtual void shutdown(){};
   static void addmachine(const char* name, PTLsimMachine* machine);
   static void removemachine(const char* name, PTLsimMachine* machine);
   static PTLsimMachine* getmachine(const char* name);
@@ -140,7 +137,7 @@ struct TransOpBuffer {
 void split_unaligned(const TransOp& transop, TransOpBuffer& buf);
 
 void capture_stats_snapshot(const char* name = NULL);
-bool handle_config_change(PTLsimConfig& config, int argc = 0, char** argv = NULL);
+bool handle_config_change(PTLsimConfig& config);
 void collect_sysinfo(PTLsimStats& stats, int argc, char** argv);
 void print_sysinfo(ostream& os);
 void backup_and_reopen_logfile();
@@ -151,7 +148,6 @@ void shutdown_subsystems();
 bool simulate(const char* machinename);
 int inject_events();
 bool check_for_async_sim_break();
-extern "C" void update_progress();
 
 //
 // uop implementations
@@ -176,7 +172,7 @@ extern W64 user_insn_commits;
 extern W64 iterations;
 extern W64 total_uops_executed;
 extern W64 total_uops_committed;
-extern W64 total_user_insns_committed;
+extern W64 total_insns_committed;
 extern W64 total_basic_blocks_committed;
 
 // #define TRACE_RIP
@@ -200,6 +196,9 @@ struct PTLsimConfig {
 
   // Starting Point
   W64 start_at_rip;
+  W64 fast_fwd_insns;
+  W64 fast_fwd_user_insns;
+  stringbuf fast_fwd_checkpoint;
 
   // Logging
   bool quiet;
@@ -212,6 +211,7 @@ struct PTLsimConfig {
   W64 log_file_size;
   stringbuf screenshot_file;
   bool log_user_only;
+  stringbuf dump_config_filename;
 
   bool dump_state_now;
   bool abort_at_end;
@@ -225,19 +225,20 @@ struct PTLsimConfig {
   stringbuf snapshot_now;
   stringbuf time_stats_logfile;
   W64 time_stats_period;
+  stringbuf stats_format;
 
   // memory model:
   bool use_memory_model;
 
   // Stopping Point
-  W64 stop_at_user_insns;
+  W64 stop_at_insns;
   W64 stop_at_cycle;
   W64 stop_at_iteration;
   W64 stop_at_rip;
   W64 stop_at_marker;
   W64 stop_at_marker_hits;
   W64 insns_in_last_basic_block;
-  W64 stop_at_user_insns_relative;
+  W64 stop_at_insns_relative;
   W64 flush_interval;
   bool kill_after_run;
 
@@ -284,12 +285,16 @@ struct PTLsimConfig {
   // Sync Options
   W64  sync_interval;
 
+  // Simpoint options
+  stringbuf simpoint_file;
+  W64 simpoint_interval;
+  stringbuf simpoint_chk_name;
+
   void reset();
+
 };
 
-extern PTLsimConfig config;
-
-extern ConfigurationParser<PTLsimConfig> configparser;
+extern ConfigurationParser<PTLsimConfig> config;
 
 ostream& operator <<(ostream& os, const PTLsimConfig& config);
 
@@ -312,6 +317,25 @@ void force_logging_enabled();
 void init_qemu_io_events();
 void clock_qemu_io_events();
 
+/**
+ * @brief Convert nano-seconds to Simulation Cycles
+ *
+ * @param ns Nano-seconds used for conversion
+ *
+ * @return Simulation Cycles based on simulation machine's frequency
+ */
 W64 ns_to_simcycles(W64 ns);
+
+/**
+ * @brief Conert simulated cycles to nano-seconds
+ *
+ * @param cycles Cycles used for conversion
+ *
+ * @return Simulated nano-seconds based on simulated machine's frequency
+ */
+float simcycles_to_ns(W64 cycles);
+
+void set_next_simpoint(Context& ctx);
+stringbuf* get_simpoint_chk_name();
 
 #endif // _PTLSIM_H_
