@@ -290,6 +290,14 @@ struct PTLsimConfig {
   W64 simpoint_interval;
   stringbuf simpoint_chk_name;
 
+#ifdef DRAMSIM
+  // DRAMSim2 options
+  stringbuf dramsim_device_ini_file;
+  stringbuf dramsim_system_ini_file;
+  stringbuf dramsim_pwd;
+  stringbuf dramsim_results_dir_name;
+#endif
+
   void reset();
 
 };
