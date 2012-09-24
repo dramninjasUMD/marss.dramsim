@@ -535,7 +535,7 @@ static void flush_stats()
     }
     //FIXME: this assumes that flush_stats is only called at the end, which is true now but might not be true in the long run
 #ifdef DRAMSIM
-    machine->simulation_done();
+    ((BaseMachine*)machine)->simulation_done();
 #endif
 
     ptl_logfile << "Stats Summary:\n";

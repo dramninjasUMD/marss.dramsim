@@ -70,6 +70,7 @@ struct BaseMachine: public PTLsimMachine {
 	virtual void dump_configuration(ostream& os) const;
 	virtual void shutdown();
     virtual ~BaseMachine();
+    void simulation_done(); 
 
     bitvec<NUM_SIM_CORES> context_used;
     W8 context_counter;

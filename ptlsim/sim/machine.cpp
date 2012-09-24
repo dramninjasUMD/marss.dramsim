@@ -692,5 +692,9 @@ void marss_register_per_cycle_event(Signal *signal)
 {
 	coremodel.per_cycle_signals.push(signal);
 }
+void BaseMachine::simulation_done()
+{
+    memoryHierarchyPtr->simulation_done(); 
+}
 
 } // extern "C"
