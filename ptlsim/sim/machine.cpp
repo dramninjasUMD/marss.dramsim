@@ -694,7 +694,9 @@ void marss_register_per_cycle_event(Signal *signal)
 }
 void BaseMachine::simulation_done()
 {
+#ifdef DRAMSIM
     memoryHierarchyPtr->simulation_done(); 
+#endif
 }
 
 } // extern "C"
